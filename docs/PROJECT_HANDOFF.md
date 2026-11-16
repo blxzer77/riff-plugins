@@ -141,7 +141,8 @@ e519d0dd4d16be63b956fd35ab52fd6644840328
   - 在此之前 `run_evals.py` 会重试超时；`reviewing-designs` iteration-3 是在旧规则下跑的。
 - `run_routing.py`（2026-11-16 新增）：把所有 skill 同时装进一个沙箱，记录每条触发 query 实际加载了哪些 skill。
   - 结果只在全部跑完后写出。
-  - 首次全量运行在 20/196 时被外部停止，目前还没有结果。
+  - 用 nyan 的首次全量运行在 20/196 时被停止，`run_routing.py` 还没有在真实 agent 上跑完过全量。
+  - 按用户要求改用 Claude 子代理，仅凭描述判断路由：正例中归属 skill 被选中 93/98，反例误选 2/98（均为 authoring-skills 选中了 evaluating-skills 的范围）。详见 `docs/EVALUATION_RESULTS.md`。
 - 并发上限：同时运行的 agent 总数保持在 4 个左右，到 12 个就会触发 `429 rate_limit_error`；本地模型代理偶有连接错误。受影响的结果必须丢弃重跑。
 - `run_evals.py` 使用独立 sandbox，并对 agent 终态 API 错误做重试；每次 attempt 保留，成本统计包含所有 attempt。
 - timeout、429/rate-limit、API error、invalid grading 和未加载 skill 的 with-run 不进入 treatment effect；它们分别记录在 `timing.json`/`benchmark.json`。

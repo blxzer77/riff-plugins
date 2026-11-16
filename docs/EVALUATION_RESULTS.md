@@ -48,6 +48,46 @@ with-skill run loaded the skill; there were no API errors and no invalid grading
 
 Results: `.workspace/reviewing-designs/iteration-3/`.
 
+## Suite routing judged by Claude subagents (2026-11-16)
+
+`run_triggers.py` installs one skill at a time, so it cannot show one skill taking
+another's queries. A full `run_routing.py` run with nyan was stopped at 20 of 196
+runs, and the user asked for subagents instead. Method: eight Claude subagents in
+this session (model not recorded), each given the ten current descriptions and
+24–25 shuffled queries from all trigger sets, without owner or label, with no
+tools, asked which skills they would load before starting each request. This is a
+judgment from descriptions alone, not an agent run with installed skills, and each
+query was judged once.
+
+| Skill | Positives, owner chosen | Negatives, owner chosen |
+|---|---:|---:|
+| authoring-skills | 9/9 | 2/9 |
+| building-llm-applications | 10/10 | 0/10 |
+| designing-apis | 10/10 | 0/10 |
+| designing-modules | 10/10 | 0/10 |
+| evaluating-skills | 9/9 | 0/9 |
+| reviewing-code | 10/10 | 0/10 |
+| reviewing-designs | 10/10 | 0/10 |
+| selecting-technologies | 8/10 | 0/10 |
+| writing-adrs | 8/10 | 0/10 |
+| writing-tests | 9/10 | 0/10 |
+| **Total** | **93/98** | **2/98** |
+
+- All five misses are indirect triggers that the descriptions spell out ("even if
+  told only to add or set up something", "even if nobody mentions ADRs", "even if
+  tests aren't mentioned"). Two `selecting-technologies` queries ("upgrade whatever
+  is outdated", "add a Dockerfile") chose nothing; two implicit `writing-adrs`
+  decisions went to `building-llm-applications` + `selecting-technologies` and to
+  `designing-modules`; one feature task with tests went to `designing-apis` alone.
+- Both false choices are `authoring-skills` on `evaluating-skills` territory
+  (optimizing a description's trigger rate; why an agent did not load a skill),
+  each chosen together with `evaluating-skills`. The two descriptions overlap on
+  description tuning.
+- 16 positives also chose a second skill, mostly expected pairs: a module split
+  with an ADR, a design review with module boundaries, an API change with tests.
+
+Results: `.workspace/_suite/routing/20261116-subagent-judgment-all.json`.
+
 ## `designing-apis` with a fixture and mechanical checks (2026-11-16, `nyan` + `deepseek-flash`)
 
 Until now every `designing-apis` assertion was graded by an LLM on prose, without a
