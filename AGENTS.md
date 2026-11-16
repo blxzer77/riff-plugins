@@ -11,6 +11,7 @@ in any spec-compliant agent; no skill may depend on one vendor's client.
 - `evals/<name>/` — development-only output cases, trigger queries, fixtures, and checks.
 - `template/SKILL.template.md` — starting point for a new skill; it is not installable.
 - `scripts/validate.py` — repository validator; CI runs it on every push.
+- `tests/` — standard-library `unittest` tests for the eval harness scripts; CI runs them.
 - `sources/` — curation maps from upstream material to skills, with the pinned commit.
 - `.claude-plugin/marketplace.json` — optional Claude Code install channel; every skill must be listed.
 
@@ -30,7 +31,10 @@ in any spec-compliant agent; no skill may depend on one vendor's client.
 - A `description` is at most 300 characters (the spec allows 1024); the validator
   enforces it.
 - No vendor-specific tool names, environment variables, slash commands, or paths in
-  skill bodies. Where a capability may be missing, describe both branches.
+  skill bodies. Where a capability may be missing, describe both branches. The one
+  exception is the eval harness's adapter layer (`skills/evaluating-skills/scripts/agents.py`
+  and `references/agents.md`), whose job is to name agent CLIs, their flags, and
+  their config locations.
 - Every skill has `evals/<name>/evals.json` (≥ 3 cases) and
   `evals/<name>/trigger-queries.json` before it is released; evals are repository
   development material and are not installed with the skill.
@@ -46,6 +50,7 @@ in any spec-compliant agent; no skill may depend on one vendor's client.
 ```bash
 python3 scripts/validate.py              # must pass with no errors
 python3 scripts/validate.py --strict     # warnings too; required before listing a skill
+python3 -m unittest discover -s tests    # eval harness tests
 ```
 
 Eval runs write to `.workspace/` (git-ignored). Never commit workspaces or move them

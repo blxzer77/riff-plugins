@@ -39,8 +39,10 @@ trigger-query schema documented in this skill's references.
 python3 scripts/run_triggers.py --skill <skill-dir> --agent <agent> --set all --runs 3
 ```
 
-A query's trigger rate is the fraction of completed, non-error runs in which the
-agent loaded the skill. Report errors and early-stopped streaming runs separately;
+A query's trigger rate is the fraction of runs that reached a routing decision in
+which the agent loaded the skill. A run that loaded the skill counts even if it
+later timed out; a run that errored or timed out before loading it is left out and
+counted as an error. Report errors and early-stopped streaming runs separately;
 trigger results do not establish task completion or full-run cost. A run that ends
 because the agent asked the user a question is not an error: a non-interactive run
 cannot answer, but the agent had already chosen whether to load the skill, so the
@@ -71,5 +73,23 @@ Run against every agent the skill must serve; they weigh descriptions differentl
 6. Confirm with 5–10 fresh queries written after optimization ended.
 
 If nothing improves, suspect the queries (mislabeled, too easy, too hard) before the
-description. Keep the final description under 1024 characters and free of queries
+description. Keep the final description within the limit of the clients you serve
+(the spec allows 1024 characters; some clients cut at about 300) and free of queries
 copied from the eval set.
+
+## Routing across a suite
+
+`run_triggers.py` installs one skill, so a description can pass there and still lose
+its queries to a neighbor once several skills are installed together. When skills
+ship as a set, also run:
+
+```bash
+python3 scripts/run_routing.py --suite <dir-with-the-skills> --agent <agent> --set validation --runs 1
+```
+
+It installs every skill in the directory at once, runs each skill's trigger queries,
+and prints a matrix of owner skill against the skills actually loaded, then lists
+positive queries another skill also or instead took, and negative queries their
+owner took. Read those rows before changing a description: a query two skills both
+serve is not a failure, and the fix for a real overlap is usually a "Not for" clause
+on both sides, not a longer description.

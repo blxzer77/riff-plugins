@@ -1,0 +1,157 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "Shop API", "version": "1.14.0"},
+  "servers": [{"url": "https://api.shop.example"}],
+  "security": [{"bearer": []}],
+  "paths": {
+    "/customers": {
+      "get": {
+        "operationId": "listCustomers",
+        "summary": "List customers, newest first (created_at desc, then id desc)",
+        "parameters": [
+          {"$ref": "#/components/parameters/Limit"},
+          {"$ref": "#/components/parameters/Cursor"},
+          {"name": "email", "in": "query", "required": false,
+           "description": "Exact, case-insensitive match.", "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {"description": "A page of customers.",
+                  "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerPage"}}}},
+          "400": {"$ref": "#/components/responses/Problem"},
+          "401": {"$ref": "#/components/responses/Problem"}
+        }
+      },
+      "post": {
+        "operationId": "createCustomer",
+        "summary": "Create a customer",
+        "requestBody": {"required": true,
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerInput"}}}},
+        "responses": {
+          "201": {"description": "Created.",
+                  "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Customer"}}}},
+          "400": {"$ref": "#/components/responses/Problem"},
+          "401": {"$ref": "#/components/responses/Problem"},
+          "409": {"$ref": "#/components/responses/Problem"}
+        }
+      }
+    },
+    "/customers/{customer_id}": {
+      "parameters": [{"$ref": "#/components/parameters/CustomerId"}],
+      "get": {
+        "operationId": "getCustomer",
+        "summary": "Get a customer",
+        "responses": {
+          "200": {"description": "The customer.",
+                  "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Customer"}}}},
+          "401": {"$ref": "#/components/responses/Problem"},
+          "404": {"$ref": "#/components/responses/Problem"}
+        }
+      },
+      "patch": {
+        "operationId": "updateCustomer",
+        "summary": "Update a customer's name or email",
+        "requestBody": {"required": true,
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerPatch"}}}},
+        "responses": {
+          "200": {"description": "The updated customer.",
+                  "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Customer"}}}},
+          "400": {"$ref": "#/components/responses/Problem"},
+          "401": {"$ref": "#/components/responses/Problem"},
+          "404": {"$ref": "#/components/responses/Problem"}
+        }
+      }
+    },
+    "/items": {
+      "get": {
+        "operationId": "listItems",
+        "summary": "List all items in the caller's catalogue",
+        "description": "Returns every item as a plain array, in no particular order. Predates the page-object convention; used by mobile apps 3.x and later and by the warehouse sync job.",
+        "responses": {
+          "200": {"description": "All items.",
+                  "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/Item"}}}}},
+          "401": {"$ref": "#/components/responses/Problem"}
+        }
+      }
+    },
+    "/items/{item_id}": {
+      "get": {
+        "operationId": "getItem",
+        "summary": "Get an item",
+        "parameters": [{"name": "item_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {"description": "The item.",
+                  "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Item"}}}},
+          "401": {"$ref": "#/components/responses/Problem"},
+          "404": {"$ref": "#/components/responses/Problem"}
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {"bearer": {"type": "http", "scheme": "bearer"}},
+    "parameters": {
+      "Limit": {"name": "limit", "in": "query", "required": false,
+                "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25}},
+      "Cursor": {"name": "cursor", "in": "query", "required": false,
+                 "description": "Opaque value from a previous page's next_cursor.",
+                 "schema": {"type": "string"}},
+      "CustomerId": {"name": "customer_id", "in": "path", "required": true, "schema": {"type": "string"}}
+    },
+    "responses": {
+      "Problem": {"description": "An error.",
+                  "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}}
+    },
+    "schemas": {
+      "Customer": {
+        "type": "object",
+        "required": ["id", "name", "email", "created_at"],
+        "properties": {
+          "id": {"type": "string", "examples": ["cus_8f2k1"]},
+          "name": {"type": "string"},
+          "email": {"type": "string", "format": "email"},
+          "created_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "CustomerInput": {
+        "type": "object",
+        "required": ["name", "email"],
+        "properties": {"name": {"type": "string"}, "email": {"type": "string", "format": "email"}}
+      },
+      "CustomerPatch": {
+        "type": "object",
+        "properties": {"name": {"type": "string"}, "email": {"type": "string", "format": "email"}}
+      },
+      "CustomerPage": {
+        "type": "object",
+        "required": ["data", "next_cursor"],
+        "properties": {
+          "data": {"type": "array", "items": {"$ref": "#/components/schemas/Customer"}},
+          "next_cursor": {"type": ["string", "null"]}
+        }
+      },
+      "Item": {
+        "type": "object",
+        "required": ["id", "name", "owner_id", "price_cents", "updated_at"],
+        "properties": {
+          "id": {"type": "string", "examples": ["itm_41xq"]},
+          "name": {"type": "string"},
+          "owner_id": {"type": "string", "description": "The customer who listed the item."},
+          "price_cents": {"type": "integer", "minimum": 0},
+          "updated_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "required": ["type", "title", "status", "code", "request_id"],
+        "properties": {
+          "type": {"type": "string"},
+          "title": {"type": "string"},
+          "status": {"type": "integer"},
+          "detail": {"type": "string"},
+          "code": {"type": "string"},
+          "request_id": {"type": "string"}
+        }
+      }
+    }
+  }
+}

@@ -2,6 +2,8 @@
 name: authoring-skills
 description: Creates and revises Agent Skills (scope, frontmatter, body, references, scripts, evals). Use when writing a skill, turning a workflow or recurring correction into one, restructuring or shortening a skill, or fixing a description that doesn't trigger. Not for measuring a skill (evaluating-skills).
 license: Apache-2.0
+metadata:
+  verified-on: "2026-11-16"
 ---
 
 # Authoring skills
@@ -39,13 +41,16 @@ stable project rule rather than reusable skill behavior.
 ## Frontmatter
 
 Use only fields defined by the Agent Skills specification so every client loads the
-skill. Client-specific extensions (invocation control, tool grants, model overrides)
-make a skill fail validation or behave differently elsewhere.
+skill; the fields and limits below were checked against the spec on 2026-11-16.
+Client-specific extensions (invocation control, tool grants, model overrides) make a
+skill fail validation or behave differently elsewhere. The spec's `allowed-tools`
+field is experimental and clients support it differently; leave it out unless you
+target one client.
 
 ```yaml
 ---
 name: designing-apis            # = directory name; lowercase, digits, single hyphens; ≤ 64
-description: <see below>        # ≤ 1024 characters, no angle brackets
+description: <see below>        # ≤ 1024 characters by spec, aim for ≤ 300; no angle brackets
 license: Apache-2.0             # optional
 compatibility: Requires git.    # optional, only for real environment requirements
 metadata:                       # optional, string values only
@@ -66,7 +71,8 @@ situations, including ones where the user never names the domain>. Not for
 <nearest neighboring request or skill>.
 ```
 
-- Lead with the main use case; some clients truncate long descriptions.
+- Lead with the main use case and keep it to about 300 characters: some clients cut
+  longer descriptions in their skill list. This repository enforces 300.
 - Describe intents and situations, not internal mechanics or file formats.
 - Be explicit about indirect triggers ("…or when a bug fix is about to ship
   without a test"). Agents under-load skills more often than they over-load them.

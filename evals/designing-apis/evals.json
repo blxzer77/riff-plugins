@@ -4,16 +4,30 @@
     {
       "id": 1,
       "name": "design-retryable-export",
-      "prompt": "Add an API for starting customer exports. Exports can take minutes, users retry when mobile connections drop, and we need progress plus a downloadable result. Inspect the existing API conventions and tests, then propose or implement the safest contract.",
-      "expected_output": "Inspects repository conventions; chooses a durable operation/status resource; specifies idempotency, states, result retrieval, authorization, expiry, errors, and tests; avoids pretending the request is synchronous.",
-      "assertions": ["The response includes a decision brief or implementation plan grounded in existing files", "The contract defines idempotency and a long-running operation lifecycle", "The response includes validation for retries, authorization, failure, and old-client compatibility"]
+      "prompt": "Add an API for starting customer exports. Exports can take minutes, users retry when mobile connections drop, and we need progress plus a downloadable result. Make the change in the contract.",
+      "expected_output": "Reads the conventions and the contract; adds an operation resource for exports (start returns 202 or an operation, a GET reports defined states, progress, failure, and the result link); makes the start safe to retry with an idempotency key or a client-chosen id and defines key reuse and expiry; keeps existing operations compatible; runs the contract check.",
+      "files": ["files/shop-api"],
+      "assertions": [
+        {"id": "contract-valid", "text": "The final openapi.json passes the repository's contract check", "script": "checks/contract_valid.py"},
+        {"id": "existing-compatible", "text": "Existing operations keep their paths, required inputs, success statuses, and response shapes", "script": "checks/existing_operations_compatible.py"},
+        {"id": "export-operation", "text": "Starting an export creates an operation a client can follow to defined success and failure states and to the finished file", "script": "checks/export_is_operation_resource.py"},
+        {"id": "export-retry-safe", "text": "Starting an export takes an idempotency key or a client-chosen id, so a retried request does not start a second export", "script": "checks/export_create_is_idempotent.py"},
+        {"id": "key-reuse-defined", "text": "The contract or the response defines what happens when a retry reuses the key with a different request body, or after the key expires"}
+      ]
     },
     {
       "id": 2,
       "name": "evolve-search-list",
-      "prompt": "Our existing /items endpoint needs filtering by owner, sorting by updated time, and pagination. Some clients are several releases behind. Design the change without breaking them.",
-      "expected_output": "Keeps the existing contract compatible where possible; defines stable ordering, bounded filters, opaque cursor behavior, limits, and a migration/deprecation plan; checks schemas and tests.",
-      "assertions": ["Pagination and ordering semantics are explicit", "The answer addresses old clients and distinguishes additive from breaking changes", "The answer does not impose a new API style without inspecting the existing endpoint"]
+      "prompt": "Our existing /items endpoint needs filtering by owner, sorting by updated time, and pagination. Some clients are several releases behind. Make the change in the contract.",
+      "expected_output": "Notices that GET /items returns a plain array that old mobile clients parse; keeps that response for requests without the new parameters (or adds a new endpoint); adds an owner filter, a sort with a tie-breaker, an opaque cursor, and a bounded page size; explains the effect on old clients; runs the contract check.",
+      "files": ["files/shop-api"],
+      "assertions": [
+        {"id": "contract-valid", "text": "The final openapi.json passes the repository's contract check", "script": "checks/contract_valid.py"},
+        {"id": "existing-compatible", "text": "Existing operations, including GET /items for clients that send no new parameters, keep their required inputs and response shapes", "script": "checks/existing_operations_compatible.py"},
+        {"id": "items-cursor-bounded", "text": "An items list takes an opaque cursor and a page size with a maximum", "script": "checks/items_list_paginated.py"},
+        {"id": "stable-order", "text": "Sorting by updated time has a tie-breaker (such as id), so pages do not skip or repeat items with equal times"},
+        {"id": "old-clients-explained", "text": "The response states how clients that send none of the new parameters are affected"}
+      ]
     },
     {
       "id": 3,

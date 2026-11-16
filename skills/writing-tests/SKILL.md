@@ -58,7 +58,9 @@ claim tests pass without running them; if you cannot run them, say so.
 - **No logic in tests.** No loops or conditionals computing expected values;
   write the expected value literally. Repetition that keeps a test readable is fine.
 - **Expected values come from the spec, not from the code.** Never run the code and
-  paste its output into the assertion; that freezes bugs into the suite.
+  paste its output into the assertion; that freezes bugs into the suite. The
+  exception is a characterization test before a refactor, which pins today's output
+  on purpose: name it as one, and point out any pinned output you think is wrong.
 - **Deterministic and hermetic.** No real sleeps, wall-clock time, randomness without
   a seed, network, or shared state between tests. Inject a clock; use the runner's
   fake timers; build fresh state per test.

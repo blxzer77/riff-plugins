@@ -10,7 +10,7 @@ so check them for updates before relying on details.
 | Building effective agents (anthropic.com/engineering) | Simplest solution first, possibly no agentic system; single call with retrieval and examples is often enough; workflows vs agents; chaining, routing, parallelization, orchestrator-workers, evaluator-optimizer; stopping conditions; use APIs before frameworks; tool interface design |
 | Writing effective tools for agents (anthropic.com/engineering) | Task-shaped tools over endpoint wrappers; consolidation and namespacing; high-signal responses without low-level identifiers; pagination, truncation, and concise formats; actionable errors; evaluating tools with realistic tasks |
 | Effective context engineering for AI agents (anthropic.com/engineering) | Smallest high-signal context; overlapping toolsets as a failure mode; canonical examples over exhaustive rule lists |
-| Contextual retrieval (anthropic.com/news) | Put a knowledge base under about 200,000 tokens in the prompt; keyword plus embedding search; contextual chunks and reranking reduce retrieval failures; tune chunk count with evals |
+| Contextual retrieval (anthropic.com/research; re-checked 2026-11-16) | Put a knowledge base under about 200,000 tokens (about 500 pages) in the prompt; keyword plus embedding search; contextual chunks and reranking reduce retrieval failures; tune chunk count with evals |
 | How we built our multi-agent research system (anthropic.com/engineering) | Agents use about 4x and multi-agent systems about 15x the tokens of chat; multi-agent suits high-value breadth-first tasks, not tightly coupled ones; scale effort to the query |
 | Demystifying evals for AI agents (anthropic.com/engineering) | 20–50 tasks from real failures to start; unambiguous tasks two experts agree on; balanced should/should-not sets; isolated trials; grade outcomes not paths; calibrate model graders and allow "unknown"; read transcripts |
 | Docs: define success criteria; build evaluations | Measurable criteria; code graders before model graders before humans |
@@ -25,7 +25,7 @@ URLs:
 - https://www.anthropic.com/engineering/building-effective-agents
 - https://www.anthropic.com/engineering/writing-tools-for-agents
 - https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
-- https://www.anthropic.com/news/contextual-retrieval
+- https://www.anthropic.com/research/contextual-retrieval
 - https://www.anthropic.com/engineering/multi-agent-research-system
 - https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents
 - https://platform.claude.com/docs/en/build-with-claude/

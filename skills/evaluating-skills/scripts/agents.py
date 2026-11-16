@@ -28,10 +28,11 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from common import HarnessError, read_frontmatter
+from common import HarnessError, is_within, read_frontmatter
 
 _SKILL_PATH = re.compile(r"""(?:^|[/\\\s"'`=])([^/\\\s"'`=]+)[/\\]SKILL\.md""")
-_INSTALL_RECORD = "riff-installed.json"
+# Agent Skills names: lowercase letters, digits, single hyphens, at most 64 characters.
+_SKILL_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 
 @dataclass
@@ -180,6 +181,11 @@ class Adapter:
 
     def __init__(self, bin: str | None = None, home: str | None = None):
         self.bin = bin
+        # What install() created, per working directory. Kept in this process: the
+        # agent under test can rewrite any file in its working directory, so nothing
+        # stored there may decide what uninstall() deletes.
+        self._installs: dict[str, list[tuple[Path, list[Path]]]] = {}
+        self._installs_lock = threading.Lock()
 
     def env(self) -> dict[str, str]:
         return dict(os.environ)
@@ -191,8 +197,25 @@ class Adapter:
     def install(self, skill_dir: Path | None, workdir: Path) -> list[str]:
         if skill_dir is None:
             return self.skill_args(None)
-        name = read_frontmatter(skill_dir).get("name") or Path(skill_dir).name
-        dest = workdir / self.skills_subdir / name
+        return self.skill_args(self._install(skill_dir, workdir))
+
+    def install_suite(self, skill_dirs: list[Path], workdir: Path) -> list[str]:
+        """Install several skills into one working directory (routing across a suite)."""
+        return self.suite_args([self._install(d, workdir) for d in skill_dirs])
+
+    def suite_args(self, installed: list[Path]) -> list[str]:
+        return [arg for path in installed for arg in self.skill_args(path)]
+
+    def _install(self, skill_dir: Path, workdir: Path) -> Path:
+        name = str(read_frontmatter(skill_dir).get("name") or Path(skill_dir).name)
+        if len(name) > 64 or not _SKILL_NAME.fullmatch(name):
+            raise HarnessError(f"skill name {name!r} is not a valid Agent Skills name "
+                               "(lowercase letters, digits and single hyphens)")
+        workdir = Path(workdir)
+        dest = Path(os.path.normpath(workdir / self.skills_subdir / name))
+        if not is_within(dest, workdir):
+            raise HarnessError(f"skills directory {self.skills_subdir!r} resolves outside "
+                               f"the working directory {workdir}")
         if dest.exists():
             raise HarnessError(f"{dest} already exists in the fixture; refusing to overwrite")
         created, probe = [], dest
@@ -206,21 +229,26 @@ class Adapter:
             (git_dir / "info").mkdir(exist_ok=True)
             with open(git_dir / "info" / "exclude", "a", encoding="utf-8") as fh:
                 fh.write(f"/{rel}/\n")
-            record = {"skill": str(dest), "created": [str(p) for p in created]}
-            (git_dir / _INSTALL_RECORD).write_text(json.dumps(record), encoding="utf-8")
-        return self.skill_args(dest)
+        with self._installs_lock:
+            self._installs.setdefault(str(workdir.resolve()), []).append((dest, created))
+        return dest
 
     def uninstall(self, workdir: Path) -> None:
-        record_path = workdir / ".git" / _INSTALL_RECORD
-        if not record_path.is_file():
-            return
-        record = json.loads(record_path.read_text(encoding="utf-8"))
-        shutil.rmtree(record["skill"], ignore_errors=True)
-        for path in record["created"]:
-            p = Path(path)
-            if p.is_dir() and not any(p.iterdir()):
-                p.rmdir()
-        record_path.unlink()
+        workdir = Path(workdir)
+        with self._installs_lock:
+            entries = self._installs.pop(str(workdir.resolve()), [])
+        # The agent may have replaced part of an install path with a symlink. Delete
+        # nothing that no longer resolves inside the working directory.
+        for dest, created in entries:
+            for path in (dest, *created):
+                if path.is_symlink() or (path.exists() and not is_within(path, workdir)):
+                    raise HarnessError(f"refusing to remove {path}: the agent replaced it "
+                                       "with a link that leads outside the working directory")
+        for dest, created in reversed(entries):
+            shutil.rmtree(dest, ignore_errors=True)
+            for p in created:
+                if p.is_dir() and not any(p.iterdir()):
+                    p.rmdir()
 
     def command(self, prompt: str, workdir: Path, model: str | None,
                 extra_args: list[str] | None = None) -> tuple[list[str], str | None]:
@@ -310,6 +338,9 @@ class PiAdapter(Adapter):
 
     def skill_args(self, installed):
         return ["--no-skills"] + (["--skill", str(installed)] if installed else [])
+
+    def suite_args(self, installed):
+        return ["--no-skills"] + [arg for path in installed for arg in ("--skill", str(path))]
 
     def command(self, prompt, workdir, model, extra_args=None):
         argv = [self.bin, *self._base, *(extra_args or [])]
@@ -588,6 +619,10 @@ class CommandAdapter(Adapter):
 
     def skill_args(self, installed):
         return [str(installed)] if installed else []
+
+    def suite_args(self, installed):
+        # {skill_dir} names the directory that holds every installed skill.
+        return [str(installed[0].parent)] if installed else []
 
     def command(self, prompt, workdir, model, extra_args=None):
         prompt_file = Path(workdir).parent / "prompt.md"

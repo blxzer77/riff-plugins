@@ -12,6 +12,8 @@ from pathlib import Path
 from common import HarnessError, git
 
 DEFAULT_ROOT = Path.home() / ".cache" / "riff-skills" / "runs"
+# Git directory, next to the working directory, recording the state the agent starts from.
+START_GIT = "start.git"
 
 
 def copy_fixture(skill_dir: Path, files: list[str], dest: Path) -> None:
@@ -40,6 +42,9 @@ def sandbox(root: Path, fixture: Path | None = None):
     If the fixture contains `setup.sh`, it runs after the initial commit (with git
     identity configured) and is then removed, so a fixture can stage changes, create
     branches, or leave uncommitted edits without the agent seeing the script.
+
+    The state the agent starts from (fixture plus setup) is then recorded in a git
+    directory outside the working directory; see `diff_against_fixture`.
     """
     base = Path(root).expanduser() / uuid.uuid4().hex[:12]
     workdir = base / "work"
@@ -60,11 +65,40 @@ def sandbox(root: Path, fixture: Path | None = None):
                                   capture_output=True, text=True, timeout=120)
             if proc.returncode != 0:
                 raise HarnessError(f"fixture setup failed: {proc.stderr[-500:]}")
+        shutil.copytree(workdir / ".git", base / START_GIT, symlinks=True)
+        _start_git(workdir, ["add", "-A"])
+        _start_git(workdir, ["commit", "-q", "--no-gpg-sign", "--allow-empty", "-m", "start"])
         yield workdir
     finally:
         shutil.rmtree(base, ignore_errors=True)
 
 
+def _start_git(workdir: Path, args: list[str]) -> str:
+    """Run git against the harness's copy of the repository, never the agent's.
+
+    After a run the agent's `.git` is untrusted: its config can name commands
+    (`core.fsmonitor`, filter and diff drivers) that git would execute here.
+    """
+    return git([f"--git-dir={workdir.parent / START_GIT}", f"--work-tree={workdir}", *args],
+               workdir)
+
+
 def diff_against_fixture(workdir: Path) -> str:
-    git(["add", "-A"], workdir)
-    return git(["diff", "--cached", "--binary", "HEAD"], workdir)
+    """The agent's changes: the work tree against the state it started from.
+
+    Changes made by the fixture's `setup.sh` are part of that start state, so they
+    are not attributed to the agent. A nested repository is an error: git would
+    record it as a single gitlink and hide every change inside it.
+    """
+    for root, dirs, files in os.walk(workdir):
+        here = Path(root)
+        if here == workdir:
+            dirs[:] = [d for d in dirs if d != ".git"]
+            continue
+        if ".git" in dirs or ".git" in files:
+            nested = here.relative_to(workdir).as_posix()
+            raise HarnessError(f"nested git repository at {nested}: changes.patch cannot "
+                               "show the changes inside it")
+    _start_git(workdir, ["add", "-A"])
+    return _start_git(workdir, ["diff", "--cached", "--binary", "--no-ext-diff",
+                                "--no-textconv", "HEAD"])

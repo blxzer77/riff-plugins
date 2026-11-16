@@ -46,9 +46,10 @@ rather than a personal fork.
   that production applications should use only Active LTS or Maintenance LTS
   releases. Odd-numbered and Current releases are not for production.
 - Python versions: `https://devguide.python.org/versions/`.
-- Many products: `GET https://endoflife.date/api/v1/products/<product>` (fields
-  `isEol`, `eolFrom`, `isLts`). Gate on `isEol`/`eolFrom`; `isMaintained` also
-  counts paid extended support.
+- Many products: `GET https://endoflife.date/api/v1/products/<product>`. Each
+  release cycle in `result.releases[]` has `name`, `isEol`, `eolFrom`, `isLts`, and
+  `isMaintained` (response shape checked 2026-11-16). Gate on `isEol`/`eolFrom`;
+  `isMaintained` also counts paid extended support.
 
 For a base image, the image tag's major version decides support. Check that the
 code runs on the version you choose; the manifest's minimum version is not a

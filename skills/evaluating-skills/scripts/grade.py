@@ -30,11 +30,16 @@ GRADER_ATTEMPTS = 3
 DEFAULT_GRADER = Path(__file__).resolve().parent.parent / "references" / "grader.md"
 
 
+def _broken_check(spec: dict, problem: str) -> dict:
+    """A check that cannot run says nothing about the skill; the grading is invalid."""
+    return {"id": spec["id"], "text": spec["text"], "passed": False, "method": "script",
+            "evidence": problem, "invalid": True}
+
+
 def run_script(spec: dict, skill_dir: Path, run_dir: Path, fixture: Path) -> dict:
     script = (evals_dir(skill_dir) / spec["script"]).resolve()
     if not script.is_file():
-        return {"id": spec["id"], "text": spec["text"], "passed": False, "method": "script",
-                "evidence": f"script not found: {spec['script']}"}
+        return _broken_check(spec, f"script not found: {spec['script']}")
     if os.access(script, os.X_OK):
         argv = [str(script)]
     elif script.suffix == ".py":
@@ -42,12 +47,11 @@ def run_script(spec: dict, skill_dir: Path, run_dir: Path, fixture: Path) -> dic
     elif script.suffix == ".sh":
         argv = ["bash", str(script)]
     else:
-        return {"id": spec["id"], "text": spec["text"], "passed": False, "method": "script",
-                "evidence": f"script is not executable and has no known interpreter: {script.name}"}
+        return _broken_check(spec, f"script is not executable and has no known interpreter: "
+                                   f"{script.name}")
     extra = spec.get("args") or []
     if not isinstance(extra, list) or not all(isinstance(a, (str, int)) for a in extra):
-        return {"id": spec["id"], "text": spec["text"], "passed": False, "method": "script",
-                "evidence": f"assertion args must be a list of strings: {extra!r}"}
+        return _broken_check(spec, f"assertion args must be a list of strings: {extra!r}")
     argv = argv + [str(a) for a in extra]
     outputs = run_dir / "outputs"
     env = dict(os.environ, EVAL_WORKDIR=str(outputs / "workdir"), EVAL_FIXTURE=str(fixture),
@@ -60,6 +64,8 @@ def run_script(spec: dict, skill_dir: Path, run_dir: Path, fixture: Path) -> dic
         evidence = output[-2000:] or f"exit code {proc.returncode}"
     except subprocess.TimeoutExpired:
         passed, evidence = False, f"script timed out after {SCRIPT_TIMEOUT}s"
+    except OSError as exc:
+        return _broken_check(spec, f"script could not start: {exc}")
     return {"id": spec["id"], "text": spec["text"], "passed": passed,
             "evidence": evidence, "method": "script"}
 
@@ -175,7 +181,8 @@ def grade_llm(adapter, model, instructions, meta, specs, run_dir,
 
     verdicts = [r for r in parsed["assertion_results"] if isinstance(r, dict)]
     ids = [r.get("id") for r in verdicts]
-    if len(ids) != len(set(ids)) or set(ids) != expected or any(not isinstance(i, str) for i in ids):
+    if (any(not isinstance(i, str) for i in ids) or len(ids) != len(set(ids))
+            or set(ids) != expected):
         evidence = "grader returned duplicate, missing, or unknown assertion IDs"
         return [{"id": s["id"], "text": s["text"], "passed": False,
                  "evidence": evidence, "method": "llm"} for s in specs], \
@@ -208,6 +215,12 @@ def grade_run(run_dir, eval_dir, specs, skill_dir, adapter, model, instructions,
         for (i, _), result in zip(llm_specs, llm_results):
             results[i] = result
     graded = [results[i] for i in sorted(results)]
+    broken = [r["id"] for r in graded if r.pop("invalid", False)]
+    if broken:
+        extras["status"] = "invalid"
+        extras["grading_error"] = "; ".join(
+            filter(None, [extras.get("grading_error"),
+                          f"checks could not run: {', '.join(map(str, broken))}"]))
     passed = sum(1 for r in graded if r["passed"])
     data = {"status": extras.pop("status", "valid"),
             "assertion_results": graded,
@@ -308,7 +321,14 @@ def main() -> int:
                    for run_dir, eval_dir, specs in work}
         for future in as_completed(futures):
             run_dir = futures[future]
-            rows.append((run_dir.relative_to(iter_dir).as_posix(), future.result()))
+            rel = run_dir.relative_to(iter_dir).as_posix()
+            try:
+                rows.append((rel, future.result()))
+            except Exception as exc:  # one broken run must not stop grading the rest
+                write_json(run_dir / "grading.json", {
+                    "status": "invalid", "grading_error": f"grading failed: {exc!r}"[:500],
+                    "summary": {"passed": None, "failed": None, "total": 0, "pass_rate": None}})
+                print(f"warning: grading {rel} failed ({exc!r}); marked invalid", file=sys.stderr)
 
     for rel, summary in sorted(rows):
         rate = "-" if summary["pass_rate"] is None else f"{summary['pass_rate']:.2f}"

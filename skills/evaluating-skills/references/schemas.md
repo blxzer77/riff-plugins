@@ -98,7 +98,7 @@ for skills, because `skill-snapshot/` contains a `SKILL.md`.
 │   │   │   └── run-1/              # one directory per repetition
 │   │   │       ├── outputs/
 │   │   │       │   ├── response.md     # final assistant message
-│   │   │       │   ├── changes.patch   # working directory diff vs. fixture
+│   │   │       │   ├── changes.patch   # working directory diff vs. the start state
 │   │   │       │   ├── workdir/        # final working directory, skill install removed
 │   │   │       │   ├── transcript.jsonl
 │   │   │       │   └── agent-stderr.log  # only when the agent wrote to stderr
@@ -114,9 +114,14 @@ for skills, because `skill-snapshot/` contains a `SKILL.md`.
 
 Each run executes in a fresh sandbox directory outside the repository (default
 `~/.cache/riff-skills/runs/`), initialized as a git repository with the fixture
-committed, so `changes.patch` is `git diff` against that commit. The skill is
-installed where the agent discovers it, excluded from git, and removed before
-`workdir/` is copied out.
+committed. `changes.patch` diffs the work tree against the state the agent started
+from (the fixture plus any `setup.sh` changes), using the harness's own copy of
+the repository rather than the agent's `.git`. The skill is installed where the
+agent discovers it, excluded from git, and removed before `workdir/` is copied
+out; symlinks are copied as links. A run that leaves a nested git repository in
+the work tree is reported as an error, because the patch cannot show the changes
+inside one. The sandbox is a fresh directory, not a confinement: it does not stop
+the agent from reaching files outside it.
 
 ### run_config.json
 
@@ -243,7 +248,7 @@ Empty string means the reviewer had no complaint.
   ],
   "summary": {"total": 12, "passed": 10, "failed": 2,
               "false_negatives": 1, "false_positives": 1,
-              "infra_errors": 0, "stopped_early_runs": 20}
+              "infra_errors": 0, "retried_runs": 1, "stopped_early_runs": 20}
 }
 ```
 

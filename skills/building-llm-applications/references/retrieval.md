@@ -4,11 +4,11 @@ Verified on 2026-11-01. Adapted from the retrieval guidance in `sources.md`.
 
 ## Do you need it
 
-If the knowledge base fits comfortably in the model's context (on the order of a few
-hundred pages), putting all of it in the prompt is often simpler and more accurate
-than retrieval; prompt caching keeps repeated cost and latency down. Choose retrieval
-when the material is too large, differs per user or tenant, or changes faster than
-you can rebuild the prompt.
+If the knowledge base fits comfortably in the model's context (the source's rule of
+thumb: under about 200,000 tokens, roughly 500 pages), putting all of it in the
+prompt is often simpler and more accurate than retrieval; prompt caching keeps
+repeated cost and latency down. Choose retrieval when the material is too large,
+differs per user or tenant, or changes faster than you can rebuild the prompt.
 
 ## Design
 

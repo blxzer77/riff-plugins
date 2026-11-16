@@ -55,7 +55,7 @@ compatibility surface.
 | A domain command with a clear verb and invariant | An explicit operation/command endpoint | Modeling it as CRUD would hide intent or produce unsafe semantics |
 | Many clients need different fields/joins | A query contract with bounded, documented selection | A few fixed views cover clients; then keep fixed representations |
 | Long work or eventual completion | Create/submit an operation and expose status/result | Work is reliably short and atomic |
-| Server-to-client incremental updates | SSE for one-way ordered updates | Clients need bidirectional interaction or disconnected delivery, then use another fit |
+| Server-to-client incremental updates | SSE for one-way ordered updates | Clients send frequent messages back on the same connection (WebSockets), or the receiver is not connected (webhooks, or polling a status resource) |
 
 Do not choose REST, RPC, or GraphQL by ideology. Evaluate the client's query shape,
 mutation semantics, caching, authorization, generated-client needs, operational

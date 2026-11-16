@@ -2,6 +2,8 @@
 name: evaluating-skills
 description: Evaluates Agent Skills with static review, trigger tests and with/without benchmarks, then improves them. Use when testing, benchmarking or reviewing a skill, comparing its versions, tuning its triggering, or asking if it helps or is worth its tokens. Not for writing a new skill (authoring-skills).
 license: Apache-2.0
+metadata:
+  verified-on: "2026-11-16"
 ---
 
 # Evaluating skills
@@ -31,7 +33,10 @@ two versions need a holistic comparison.
 - [ ] Layer 1: run the repository validator if there is one, then review against
       `references/static-review.md`. Fix critical findings before spending runs.
 - [ ] Pick the agent(s) and model(s) the skill must serve. Read
-      `references/agents.md` for the supported adapters and isolation caveats.
+      `references/agents.md` for the supported adapters. The scripts run agents
+      without permission prompts and do not confine them to the sandbox: run them
+      in a container, VM, or confining wrapper, or tell the user first and use only
+      trusted fixtures.
 - [ ] Ensure `evals/<skill-name>/evals.json` exists (≥ 3 cases). Draft missing cases
       with the user; their real tasks make better cases than invented ones.
 - [ ] Layer 2: ensure `evals/<skill-name>/trigger-queries.json` exists, measure,
@@ -65,6 +70,7 @@ branch and state the limitation.
 | `scripts/grade.py` | Grade runs: assertion scripts mechanically, the rest with an LLM grader |
 | `scripts/aggregate.py` | Write `benchmark.json` / `benchmark.md` with deltas and assertion patterns |
 | `scripts/run_triggers.py` | Measure trigger rates for a query set or a candidate description |
+| `scripts/run_routing.py` | Install a whole suite and see which skill each query actually loads |
 | `scripts/split_queries.py` | Assign a fixed, stratified train/validation split |
 
 The supporting modules `scripts/agents.py`, `scripts/common.py`, and

@@ -182,7 +182,8 @@ def normalize_assertions(raw) -> list[dict]:
 def git(args: list[str], cwd: Path) -> str:
     proc = subprocess.run(
         ["git", "-c", "user.name=eval", "-c", "user.email=eval@localhost",
-         "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", *args],
+         "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
+         "-c", "core.fsmonitor=false", *args],
         cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if proc.returncode != 0:

@@ -13,7 +13,8 @@ will underperform), or **minor** (polish). Report file and line for each.
 - Third person ("Writes…", "Guides…"), with "Use when …" naming user intents, not
   internal mechanics. Covers indirect phrasings where the user never names the domain.
 - States what it is not for when a neighboring skill or common request is close.
-- No trigger-phrase dumps, no vendor or tool names, under 1024 characters.
+- No trigger-phrase dumps, no vendor or tool names. At most 1024 characters by spec;
+  aim for about 300, because some clients cut longer descriptions.
 
 ## Body
 

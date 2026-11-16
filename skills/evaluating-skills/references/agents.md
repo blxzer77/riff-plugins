@@ -1,18 +1,23 @@
 # Agent adapters
 
-Contents: [Adapters](#adapters) · [pi](#pi) · [claude-code](#claude-code) · [codex](#codex-unverified) · [command](#command-generic) · [Caveats](#caveats-for-every-agent) · [Adding an adapter](#adding-an-adapter)
+Contents: [Adapters](#adapters) · [pi](#pi) · [claude-code](#claude-code) · [codex](#codex-unverified) · [command](#command-generic) · [Filesystem access](#filesystem-access) · [Caveats](#caveats-for-every-agent) · [Adding an adapter](#adding-an-adapter)
 
 The eval scripts drive agents through the repository's adapter layer. Pick one with
 `--agent <name>`; `--agent-bin`, `--agent-home` and `--model` pass through.
 
 ## Adapters
 
-| Adapter | Status | Skill installed at | Trigger detected when | Isolation |
+| Adapter | Status | Skill installed at | Trigger detected when | Config isolation |
 |---|---|---|---|---|
 | `pi` | Verified | `<workdir>/.riff-skill/<name>/`, passed with `--skill` | a `read` tool call opens `<name>/SKILL.md` | `--no-skills --no-context-files --no-extensions --no-prompt-templates --no-session` |
 | `claude-code` | Verified (with a Claude Code-compatible binary) | `<workdir>/.claude/skills/<name>/` | trigger evals: a `Skill` call for `<name>`; output evals: that or a read of `<name>/SKILL.md` | `--setting-sources project --strict-mcp-config` |
 | `codex` | **Unverified** (written from the Codex CLI docs) | `<workdir>/.agents/skills/<name>/` | a `command_execution` item reads `<name>/SKILL.md` (cat, head, sed, …) | `exec --ephemeral --skip-git-repo-check --sandbox workspace-write` |
 | `command` | Generic | `--skills-dir` (default `.agents/skills`) | stdout contains `<name>/SKILL.md` | whatever your command does |
+
+Last end-to-end runs: `claude-code` on 2026-11-16 with a Claude Code-compatible
+binary, `pi` on 2026-10-30; `codex` has never been run. Agent CLIs change their
+flags and output, so re-verify an adapter that has not run recently (see
+[Adding an adapter](#adding-an-adapter)).
 
 Only reading a SKILL.md counts as loading it. Listing or searching a directory that
 contains one (`ls`, `find`, `grep`, glob tools) does not.
@@ -26,7 +31,8 @@ agent using the skill.
 
 Every run starts in a fresh git repository under `~/.cache/riff-skills/runs/`
 (`--sandbox-root`), with only the skill under test installed and excluded from
-git. The install is removed before outputs are copied.
+git. The install is removed before outputs are copied. A fresh directory is not a
+confinement; see [Filesystem access](#filesystem-access).
 
 ### pi
 
@@ -51,8 +57,9 @@ git. The install is removed before outputs are copied.
 - `CLAUDECODE` is removed from the environment so runs can be launched from
   inside a session. Sessions are persisted so detection works, and the
   sandbox's project directory is deleted after parsing.
-- Runs use `--permission-mode bypassPermissions`. That is acceptable only
-  because the working directory is a throwaway sandbox.
+- Runs use `--permission-mode bypassPermissions`, because a non-interactive run
+  cannot answer permission prompts. The agent can then do anything your user can;
+  see [Filesystem access](#filesystem-access).
 - The grader runs with `--tools ""` and `--no-session-persistence`.
 
 ### codex (unverified)
@@ -72,7 +79,8 @@ git. The install is removed before outputs are copied.
 
 - `{prompt_file}`: the prompt is written there.
 - `{workdir}`: the sandbox.
-- `{skill_dir}`: the installed copy, or empty for baseline runs.
+- `{skill_dir}`: the installed copy, or empty for baseline runs. Under
+  `run_routing.py`, the directory that holds every installed skill.
 
 All of stdout is taken as the response, and tokens are not reported. Trigger
 detection is a substring match, so it only works when the agent prints the
@@ -83,15 +91,36 @@ run_triggers.py --skill skills/x --agent command \
   --agent-cmd "my-agent --quiet --prompt-file {prompt_file}" --skills-dir .agents/skills
 ```
 
+## Filesystem access
+
+The harness gives each run its own working directory but does not confine the
+agent to it. A run without permission prompts can read your home directory, the
+credentials in your environment, and other runs' directories, and can write
+outside its own. Fixtures and queries are instructions the agent acts on; one that
+misleads it acts with your permissions.
+
+- Run evals inside a container or VM, or pass a wrapper that confines the agent to
+  its working directory as `--agent-bin` (for example bubblewrap, or a separate OS
+  user). Give the agent only the environment variables it needs.
+- Without such confinement, tell the user before running, and run only fixtures
+  and queries you trust.
+
+The harness does not trust the working directory after a run. It keeps install
+records in memory and removes only paths that still resolve inside the working
+directory; it computes `changes.patch` from its own copy of the repository, so
+the agent's git configuration cannot make the harness run commands; and it copies
+symlinks as links.
+
 ## Caveats for every agent
 
 - **Rate limits corrupt results silently.** An agent that hits HTTP 429 mid-task may
   still exit 0 with a half-done workdir. Adapters detect the agent's terminal error
-  state (`RunResult.error`); `run_evals.py` retries such runs (`--retries`, backoff)
-  and marks them `"error"` in `timing.json` if they keep failing, and `grade.py` /
-  `aggregate.py` exclude them. Keep total concurrency (`--jobs` across everything
-  you run at once) below what your model endpoint allows; running output and
-  trigger evals in parallel is the usual way to exceed it.
+  state (`RunResult.error`); `run_evals.py` and `run_triggers.py` retry such runs
+  (`--retries`, backoff). `run_evals.py` marks runs that keep failing `"error"` in
+  `timing.json` and `grade.py` / `aggregate.py` exclude them; `run_triggers.py`
+  counts them as errors. Timeouts are not retried. Keep total concurrency (`--jobs`
+  across everything you run at once) below what your model endpoint allows;
+  running output and trigger evals in parallel is the usual way to exceed it.
 - **Simple prompts rarely trigger skills.** Agents load a skill only when a task
   seems to need more than they already know. In testing, a Claude Code-compatible
   agent wrote a pirate greeting without loading a pirate-greeting skill; pi

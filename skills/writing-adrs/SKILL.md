@@ -45,7 +45,9 @@ same change. Do not ask the user whether to record it; ask only about facts you 
       official sources; do not rely on memory.
 - [ ] List at least two real options. "Do nothing" counts only when it is viable.
 - [ ] Write the ADR (rules below). Status is `proposed` unless the user has already
-      agreed to the decision or asked you to implement it, then `accepted`.
+      agreed to the decision or asked you to implement it, then `accepted`. A
+      decision you made yourself during other work stays `proposed` even when the
+      same change implements it; the user accepts it by accepting the change.
 - [ ] If it replaces an older decision, set the old ADR's status to
       `superseded by NNNN` and link both ways. Never rewrite an accepted ADR's
       decision; supersede it.

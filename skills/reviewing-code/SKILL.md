@@ -36,8 +36,9 @@ post comments unless the requester explicitly asks.
       candidate in a fresh context that sees the claim and the code but not the
       reasoning that produced it. Read `references/verification.md` for the standard.
 - [ ] **Classify.** Drop candidates that failed verification or match
-      `references/false-positives.md`. Mark a real defect whose code is unchanged by
-      this diff as pre-existing. Merge duplicates.
+      `references/false-positives.md`. Mark a real defect as pre-existing only when
+      the change leaves its source, sink, guards, and routes as they were; a new
+      caller or input reaching old code is the change taking part. Merge duplicates.
 - [ ] **Report** in the format below, highest impact first.
 
 ## What to report

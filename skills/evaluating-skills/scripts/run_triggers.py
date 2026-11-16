@@ -20,6 +20,7 @@ import argparse
 import shutil
 import sys
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,9 +30,27 @@ from common import (HarnessError, die, evals_dir, read_frontmatter, read_json,
                     replace_description, write_json)
 from sandbox import DEFAULT_ROOT, sandbox
 
+# The spec allows 1024 characters, but some clients cut descriptions in their skill
+# list at about this length.
+SHORT_DESCRIPTION = 300
+
 
 def run_query(query: str, skill_dir: Path, name: str, adapter, model, timeout, root,
-              fixture: Path | None = None):
+              fixture: Path | None = None, retries: int = 0, backoff: float = 0):
+    """One routing decision. A run that ends in an agent error (rate limit, dropped
+    connection) before deciding is retried with backoff; timeouts are not retried,
+    because a query that runs too long would only run too long again."""
+    for attempt in range(max(0, retries) + 1):
+        if attempt:
+            time.sleep(backoff * attempt)
+        triggered, failed, proc, error = _run_once(query, skill_dir, name, adapter, model,
+                                                   timeout, root, fixture)
+        if not failed or proc.timed_out:
+            break
+    return triggered, failed, proc, error, attempt
+
+
+def _run_once(query, skill_dir, name, adapter, model, timeout, root, fixture):
     with sandbox(root, fixture) as workdir:
         extra = adapter.install(skill_dir, workdir)
         argv, stdin_text = adapter.command(query, workdir, model, extra)
@@ -69,6 +88,10 @@ def main() -> int:
     parser.add_argument("--threshold", type=float, default=0.5)
     parser.add_argument("--jobs", type=int, default=4)
     parser.add_argument("--timeout", type=int, default=180, help="seconds per run")
+    parser.add_argument("--retries", type=int, default=2,
+                        help="re-run a run that ended in an agent error (rate limit, API failure)")
+    parser.add_argument("--retry-backoff", type=float, default=30,
+                        help="seconds to wait before a retry, multiplied by the attempt number")
     parser.add_argument("--workspace", type=Path, help="default: .workspace/<skill-name>")
     parser.add_argument("--sandbox-root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument("--dry-run", action="store_true", help="print the plan and exit")
@@ -108,6 +131,9 @@ def main() -> int:
         description = args.description_file.read_text(encoding="utf-8").strip()
         if not description or len(description) > 1024:
             die(f"candidate description must be 1-1024 characters (got {len(description)})")
+    if len(description) > SHORT_DESCRIPTION:
+        print(f"warning: the description is {len(description)} characters; some clients "
+              f"cut descriptions longer than about {SHORT_DESCRIPTION}", file=sys.stderr)
 
     if args.dry_run:
         argv, stdin_text = adapter.command("<query>", Path("<sandbox>/work"), args.model,
@@ -125,19 +151,21 @@ def main() -> int:
 
         counts = {i: {"triggers": 0, "runs": 0, "stopped_early": 0, "errors": 0}
                   for i in range(len(queries))}
-        infra_errors = 0
+        infra_errors = retried_runs = 0
         with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
             futures = {pool.submit(run_query, q["query"], tested, name, adapter, args.model,
-                                   args.timeout, args.sandbox_root, q.get("_fixture")): i
+                                   args.timeout, args.sandbox_root, q.get("_fixture"),
+                                   args.retries, args.retry_backoff): i
                        for i, q in enumerate(queries) for _ in range(args.runs)}
             for future in as_completed(futures):
                 i = futures[future]
                 try:
-                    triggered, failed, proc, agent_error = future.result()
+                    triggered, failed, proc, agent_error, retries = future.result()
                 except HarnessError as exc:
                     infra_errors += 1
                     print(f"error: {exc}", file=sys.stderr)
                     continue
+                retried_runs += int(retries > 0)
                 if failed:
                     infra_errors += 1
                     counts[i]["errors"] += 1
@@ -173,7 +201,7 @@ def main() -> int:
     passed = sum(1 for r in results if r["passed"])
     summary = {"total": len(results), "passed": passed, "failed": fn + fp,
                "false_negatives": fn, "false_positives": fp,
-               "infra_errors": infra_errors,
+               "infra_errors": infra_errors, "retried_runs": retried_runs,
                "stopped_early_runs": sum(r["stopped_early_runs"] for r in results)}
     errored = sum(1 for r in results if r["passed"] is None)
     if errored:

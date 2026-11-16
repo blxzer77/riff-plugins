@@ -52,7 +52,10 @@ def attempt(job, adapter, model, timeout, sandbox_root, outputs):
         (outputs / "changes.patch").write_text(diff_against_fixture(workdir), encoding="utf-8")
         if proc.stderr.strip():
             (outputs / "agent-stderr.log").write_text(proc.stderr[-20000:], encoding="utf-8")
-        shutil.copytree(workdir, outputs / "workdir", ignore=shutil.ignore_patterns(".git"))
+        # Keep links as links: following one would copy files from outside the
+        # working directory into the workspace.
+        shutil.copytree(workdir, outputs / "workdir", ignore=shutil.ignore_patterns(".git"),
+                        symlinks=True)
     return proc, result
 
 
@@ -80,6 +83,10 @@ def run_one(job: dict, adapter, model, timeout, sandbox_root, retries) -> dict:
         final_error = error
         print(f"agent error in {run_dir} (attempt {n + 1}/{retries + 1}): {error[:160]}",
               file=sys.stderr)
+        if proc.timed_out:
+            # A run that ran too long would likely run too long again, and retrying
+            # would keep only the runs that happened to finish. Report it instead.
+            break
 
     assert proc is not None and result is not None
     final_outputs = run_dir / "outputs"
@@ -87,7 +94,7 @@ def run_one(job: dict, adapter, model, timeout, sandbox_root, retries) -> dict:
         shutil.rmtree(final_outputs)
     source_outputs = run_dir / "attempts" / f"attempt-{len(attempts)}" / "outputs"
     if source_outputs.is_dir():
-        shutil.copytree(source_outputs, final_outputs)
+        shutil.copytree(source_outputs, final_outputs, symlinks=True)
 
     expected_skill = skill_name(job["skill"]) if job["skill"] else None
     loaded = expected_skill in result.read_skill if expected_skill else None
@@ -133,7 +140,8 @@ def main() -> int:
     parser.add_argument("--jobs", type=int, default=2, help="parallel runs")
     parser.add_argument("--timeout", type=int, default=900, help="seconds per run")
     parser.add_argument("--retries", type=int, default=2,
-                        help="re-run a run whose agent ended in an error (rate limit, API failure)")
+                        help="re-run a run whose agent ended in an error (rate limit, API "
+                             "failure); timeouts are not retried")
     parser.add_argument("--sandbox-root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument("--dry-run", action="store_true", help="print the plan and exit")
     add_agent_args(parser)

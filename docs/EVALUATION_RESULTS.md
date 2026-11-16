@@ -5,16 +5,82 @@
 > Baseline: same prompts without the skill
 > Runs: two repetitions per eval case
 >
-> Current policy (2026-10-31): run new evaluations only with local cometix and
-> `deepseek-flash`; do not compare these results directly with the historical Pi run.
+> Current policy (updated 2026-11-16): run new evaluations on `deepseek-flash`
+> through a local agent inside a confining bwrap wrapper. That agent was cometix until
+> 2026-11-16 and is nyan since then, at the user's request. Compare results only
+> within one agent and model, and never directly with the historical Pi run.
 >
 > Model change (2026-11-02): `deepseek-flash` hit its monthly cap, so runs on that
 > day used `claude-haiku-5-5` (same cometix agent, same bwrap sandbox). Later the
 > same day `deepseek-flash` recovered and is the evaluation model again. Results on
 > different models are not comparable; each section says which model it used, and
-> description and body decisions are made on `deepseek-flash`. The proxy later returned
-HTTP 500 `empty response content` for a minimal deepseek request; no new run is
-valid until a minimal probe returns 200 again.
+> description and body decisions are made on `deepseek-flash`. The proxy later
+> returned HTTP 500 `empty response content` for a minimal deepseek request. On
+> 2026-11-16 a minimal probe succeeded again; probe before every batch, because the
+> local proxy still drops connections at times.
+
+## `reviewing-designs` on deepseek-flash (2026-11-16, `nyan` + `deepseek-flash`)
+
+The 2026-11-02 redesign was measured only on haiku. This repeats it on the evaluation
+model with the current body (which since today also covers designs reviewed without
+access to the project; the fixtures always include one, so that branch is not
+exercised). Four cases, three runs per configuration, four runs at a time. Every
+with-skill run loaded the skill; there were no API errors and no invalid grading.
+
+| Case | With skill | Without skill |
+|---|---:|---:|
+| donor-report (query bypasses module APIs) | 1.00 | 1.00 |
+| pickup-reminders (sound design, accepted trade-off) | 1.00 | 0.83 |
+| stock-import (insert violates a CHECK constraint) | 1.00 | 1.00 |
+| stock-search (sound design, small catalogue) | 1.00 | 0.89 |
+| **Mean** | **1.00** | **0.93** |
+
+- All three failed baseline assertions are the same one: the design is sound, but
+  the review withholds approval over details an implementer settles while building
+  (pickup-reminders 1/3 approved, stock-search 2/3). With the skill, 6/6 approved.
+- Finding the planted defects is not the gain: both configurations found them in
+  every run, as on haiku. Most assertions pass in both and should be replaced by
+  harder cases.
+- Cost: 1.20M vs 0.81M tokens per run. Time is 436 s vs 100 s on average, inflated
+  by pickup-reminders: 3 of its 6 with-skill attempts hit the 900 s timeout and were
+  retried, so its with-skill scores come from the runs that finished. The harness
+  retried timeouts at the time; it no longer does.
+
+Results: `.workspace/reviewing-designs/iteration-3/`.
+
+## `designing-apis` with a fixture and mechanical checks (2026-11-16, `nyan` + `deepseek-flash`)
+
+Until now every `designing-apis` assertion was graded by an LLM on prose, without a
+fixture. Cases 1 and 2 now run in `files/shop-api`, a contract-first API repository
+(`openapi.json`, conventions, a contract check), and ask for the change in the
+contract. Five scripts in `evals/designing-apis/checks/` grade the result. Each check
+was validated on the untouched fixture, two good solutions written differently, and
+near misses (`tests/test_designing_apis_checks.py`, 18 tests, run in CI). Case 3
+(streaming and webhooks) is unchanged. Three runs per configuration, four at a time.
+All runs completed, every with-skill run loaded the skill, and grading was valid.
+
+| Case | With skill | Without skill |
+|---|---:|---:|
+| design-retryable-export | 0.87 | 0.87 |
+| evolve-search-list | 1.00 | 1.00 |
+| ai-stream-and-webhook | 1.00 | 1.00 |
+| **Mean** | **0.96** | **0.96** |
+
+- No measured difference. Without the skill, deepseek-flash already started exports
+  as an operation resource with defined states and a download link, required an
+  `Idempotency-Key`, kept `GET /items` unchanged for old clients (adding `/v2/items`
+  or optional parameters), and paged with a cursor and a bounded limit. Spot checks
+  of baseline contracts confirm the checks are not lenient.
+- The one assertion that fails in both (2 of 3 runs each) asks the contract to say
+  what happens when a retry reuses a key with a different body, or after the key
+  expires.
+- Cost: 0.56M vs 0.34M tokens per run.
+- The earlier positive result for this skill (retryable export, 1.00 vs 0.33,
+  2026-10-31) came from a prose-only case graded by an LLM. On artifacts in a real
+  repository, its value on this model is not shown; harder cases, or a decision to
+  trim the skill, are open.
+
+Results: `.workspace/designing-apis/iteration-4/`.
 
 ## Description length cap (2026-11-16, `nyan` + `deepseek-flash`)
 
@@ -53,8 +119,9 @@ Setup, at the user's request:
 
 No regression is visible. With 7–8 queries and 3 runs each, the gains are within
 run-to-run noise: the same new `authoring-skills` description scored 7/8 and 8/8 in
-two runs. Results are the `*-validation.json` files written on 2026-11-15 (UTC)
-under `.workspace/<skill>/triggers/`.
+two runs. Results are the `*-validation.json` files under
+`.workspace/<skill>/triggers/` whose UTC timestamps fall between 2026-11-15T16:39Z
+and 22:16Z, which is 2026-11-16 in local time.
 
 ## `reviewing-designs` redesign (2026-11-02, `claude-haiku-5-5`)
 

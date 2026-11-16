@@ -19,7 +19,7 @@ Report; do not edit the proposal or the code unless asked.
 
 - [ ] **Scope.** Identify the document under review, the decision it asks for, and
       the stage (idea, ready to build, already half built). If the design is only
-      in chat, review what was said.
+      in chat, review what was said, still against the project when you can read it.
 - [ ] **Read the project before the proposal's claims.** Read the accepted decision
       records, project instructions, deployment and runtime files, and the code the
       proposal touches. Note the facts the design depends on: how the app runs
@@ -81,9 +81,11 @@ fix; `low` is real but minor and does not need a design change.
 The verdict follows the findings: `do not approve` when any finding is `high`,
 `approve with changes` when the worst is `medium`, and `approve` when there are no
 findings or only `low` ones. When nothing survives verification, write
-`Verdict: approve` and say briefly what was checked. A sound design is a valid
-result; do not invent findings, and do not hold approval for questions the
-implementer can answer while building.
+`Verdict: approve` and say briefly what was checked. If you could not read the
+project, its load-bearing claims are unverified: list them under `Checked`, and give
+at most `approve with changes`, with confirming those claims as the change. A sound
+design is a valid result; do not invent findings, and do not hold approval for
+questions the implementer can answer while building.
 
 ## Gotchas
 

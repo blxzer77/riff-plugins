@@ -1,6 +1,6 @@
 # riff-skills 项目交接
 
-> 最后更新：2026-11-08
+> 最后更新：2026-11-16
 > 当前分支：`main`
 > 用途：个人项目，不属于公司/BayDeer 工程规范仓库。
 
@@ -126,11 +126,22 @@ e519d0dd4d16be63b956fd35ab52fd6644840328
 
 ## 评测系统的已知事实
 
-- 当前只用本机 `cometix` 运行评测，模型固定为 `deepseek-flash`；不做 Pi、Codex、Nyan 或跨 agent/model 对比。
-- `cometix` 通过 Claude Code-compatible adapter 接入；评测时使用独立的 bwrap 包装，避免 agent 离开 sandbox 读取本机其他项目。
-- 例外（2026-11-16）：description 压缩的 trigger 对比按用户要求改用本机 `nyan` + `deepseek-flash`。
-  - 接法：claude-code adapter，`--agent-bin ~/.cache/riff-skills/bin/nyan-sandboxed --agent-home ~/.cache/riff-skills/nyan-home`。
-  - 结果不与 cometix 结果比较。
+- 评测模型固定为 `deepseek-flash`。agent 截至 2026-11-15 用本机 `cometix`，2026-11-16 起按用户要求改用本机 `nyan`。
+  - 只在同一 agent 和模型内比较，不与 Pi 历史结果比较。
+- 两个 agent 都通过 Claude Code-compatible adapter 接入，并在 bwrap 包装里运行：
+  - cometix：`--agent-bin ~/.cache/riff-skills/bin/cometix-sandboxed --agent-home ~/.cache/riff-skills/cometix-home`
+  - nyan：`--agent-bin ~/.cache/riff-skills/bin/nyan-sandboxed --agent-home ~/.cache/riff-skills/nyan-home`
+- 仓库里的评测脚本本身不隔离文件系统。包装脚本缺失时先重建，不要裸跑 agent。
+- 2026-11-16 起，评测脚本不再信任 agent 工作目录里的任何内容：
+  - 安装记录保存在内存里；
+  - 删除前确认路径仍在工作目录内；
+  - `changes.patch` 改为对 harness 自己持有的仓库副本计算 diff，避免 agent 写进 `.git/config` 的命令被执行。
+  - 回归测试在 `tests/`。
+- 重试规则（2026-11-16）：`run_evals.py` 和 `run_triggers.py` 遇到 API 错误会带退避重试，超时不重试。
+  - 在此之前 `run_evals.py` 会重试超时；`reviewing-designs` iteration-3 是在旧规则下跑的。
+- `run_routing.py`（2026-11-16 新增）：把所有 skill 同时装进一个沙箱，记录每条触发 query 实际加载了哪些 skill。
+  - 结果只在全部跑完后写出。
+  - 首次全量运行在 20/196 时被外部停止，目前还没有结果。
 - 并发上限：同时运行的 agent 总数保持在 4 个左右，到 12 个就会触发 `429 rate_limit_error`；本地模型代理偶有连接错误。受影响的结果必须丢弃重跑。
 - `run_evals.py` 使用独立 sandbox，并对 agent 终态 API 错误做重试；每次 attempt 保留，成本统计包含所有 attempt。
 - timeout、429/rate-limit、API error、invalid grading 和未加载 skill 的 with-run 不进入 treatment effect；它们分别记录在 `timing.json`/`benchmark.json`。
@@ -153,6 +164,13 @@ e519d0dd4d16be63b956fd35ab52fd6644840328
 - 已按 Anthropic / Claude Code 实践重做 review、LLM application、module、technology-selection、design-review 和 evaluation skill；详细结果和成本见 `docs/EVALUATION_RESULTS.md`。
 - 这些结论是每个 case 三次运行的方向性证据，不能泛化为 skill 的全部能力。
 - 用户已决定在 2026-11-02 收尾评测阶段，不再为统一模型而重跑现有结果；Haiku 结果与 deepseek 结果保持分开记录。
+- 2026-11-16 按分析报告分四批修复（详见 `docs/EVALUATION_RESULTS.md` 2026-11-16 各节）：
+  - 评测脚本安全：安装记录、路径校验、diff 不再在 agent 的仓库里执行 git、输出保留符号链接。
+  - 正文修正：writing-tests、reviewing-designs、selecting-technologies、reviewing-code、designing-apis、building-llm-applications、writing-adrs。
+  - 统一 300 字符规则，CI 改为 `--strict`。
+  - 补全第三方声明，时效事实加上日期。
+  - `designing-apis` 改为带 fixture 的机械检查。在 deepseek 上带不带 skill 都是 0.96，正文增益未体现。
+  - `reviewing-designs` 在 deepseek 上复测：带 skill 1.00，不带 0.93。增益集中在设计合理时敢于给出 approve。
 - 所有 skill 的 description 已压缩到 300 字符以内，`scripts/validate.py` 会拒绝更长的描述。
   - 新旧描述在 validation 集上的 trigger 对比：旧 71/79，新 74/79，均无误触发，未见退化。
   - 详见 `docs/EVALUATION_RESULTS.md` 的 "Description length cap"。
@@ -165,12 +183,17 @@ e519d0dd4d16be63b956fd35ab52fd6644840328
    ```bash
    python3 scripts/validate.py --strict
    python3 -m py_compile scripts/*.py skills/*/scripts/*.py evals/*/checks/*.py
+   python3 -m unittest discover -s tests
    ```
 
-2. 用通用 CLI 做安装 smoke test，确认正式 skill 数量和名称与 `skills/` 一致，模板不会被安装：
+2. 用通用 CLI 做安装 smoke test，确认正式 skill 数量和名称与 `skills/` 一致，模板不会被安装。
+
+   必须在临时目录里运行：在仓库根目录运行会生成几十个 agent 目录和 `skills-lock.json`。
 
    ```bash
-   npx --yes skills@1.7.6 add . --all --copy --yes
+   repo=$PWD; tmp=$(mktemp -d)
+   (cd "$tmp" && npx --yes skills@1.7.6 add "$repo" --all --copy --yes)
+   rm -rf "$tmp"
    ```
 
 3. 新增 skill 时只放在 `skills/<name>/`；模板、fixture 和评测快照不能暴露会被通用 CLI 发现的根 `SKILL.md`。
@@ -178,7 +201,10 @@ e519d0dd4d16be63b956fd35ab52fd6644840328
 5. 发布使用 `vMAJOR.MINOR.PATCH` Git tag；发布前检查所有 skill 都能从 Git 仓库安装，Claude marketplace 只作为附加入口维护。
 6. 项目依赖若生成 `skills-lock.json`，提交并审查它；不要提交 `.agents/skills/`、agent session、缓存或其他安装生成物。
 7. 如果安装到个人项目且规则需要每次生效，复制对应 `assets/agents-snippet.md` 到项目自己的 agent instruction file；skill 只在加载时生效。
-8. 暂不继续运行行为评测；如果以后恢复，单独更新本文件和 `docs/EVALUATION_RESULTS.md`，并且不做 Pi、Codex、Nyan 或跨 agent/model 对比，除非用户明确改变评测政策。
+8. 行为评测已于 2026-11-16 恢复。
+   - 新结果写入 `docs/EVALUATION_RESULTS.md`，注明 agent、模型和日期，并同步更新本文件。
+   - 每批开跑前先做一次最小探测。
+   - 同时运行的 agent 不超过约 4 个。
 
 ## 不要做的事
 

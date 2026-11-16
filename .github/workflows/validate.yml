@@ -43,10 +43,13 @@ jobs:
           EOF
 
       - name: Repository conventions
-        run: python scripts/validate.py
+        run: python scripts/validate.py --strict
 
       - name: Eval scripts compile
         run: python -m py_compile skills/*/scripts/*.py scripts/*.py evals/*/checks/*.py
+
+      - name: Eval harness tests
+        run: python -m unittest discover -s tests -v
 
       - name: Generic skills CLI install smoke test
         run: |

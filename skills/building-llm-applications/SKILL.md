@@ -40,7 +40,7 @@ examples. Every extra stage adds latency, cost, and a new way to fail.
 | Rung | Use when | Move up when |
 |---|---|---|
 | One model call with a schema, examples, and validation | The task is a single transformation: extract, classify, summarize, draft | The eval shows the call cannot meet the criteria even with better instructions and examples |
-| Knowledge in the prompt | The reference material fits comfortably in context (roughly a few hundred pages) | It does not fit, changes per user, or cost and latency from repeating it are too high even with prompt caching |
+| Knowledge in the prompt | The reference material fits comfortably in the model's context (the source's rule of thumb: under about 200,000 tokens, roughly 500 pages) | It does not fit, changes per user, or cost and latency from repeating it are too high even with prompt caching |
 | Retrieval | The knowledge is too large or per-user | Measured retrieval quality is the bottleneck; then improve chunking, add keyword search alongside embeddings, or rerank |
 | Workflow (fixed code path of model calls) | Steps are known in advance: chain with gates, route to handlers, run parts in parallel, or draft-then-critique | The steps genuinely cannot be known until runtime |
 | Agent (model chooses tools in a loop) | Open-ended tasks where the path depends on what it finds, and the environment gives it ground truth | One agent's context or time cannot cover independent subtasks |
