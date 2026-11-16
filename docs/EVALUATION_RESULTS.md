@@ -16,6 +16,46 @@
 HTTP 500 `empty response content` for a minimal deepseek request; no new run is
 valid until a minimal probe returns 200 again.
 
+## Description length cap (2026-11-16, `nyan` + `deepseek-flash`)
+
+All ten descriptions were cut to at most 300 characters (they were 398–607), and
+`scripts/validate.py` now rejects longer ones. Old and new descriptions were run on
+each skill's validation queries: 3 runs per query, threshold 0.5, 600 s timeout.
+
+Setup, at the user's request:
+
+- Agent: local `nyan` 0.2.1 through the `claude-code` adapter, wrapped by
+  `~/.cache/riff-skills/bin/nyan-sandboxed`, with its own home in
+  `~/.cache/riff-skills/nyan-home`. The wrapper is bwrap, like
+  `cometix-sandboxed`. It copies `.claude/skills` into `.nyan/skills`, because nyan
+  discovers skills only there. It also passes `--settings`, because
+  `--setting-sources project` drops nyan's model profiles. These results are not
+  comparable with cometix runs.
+- The old and new descriptions of a skill ran at the same time, with 4 agents in
+  total. Twelve or more concurrent agents hit `429 rate_limit_error`. Between about
+  03:00 and 06:00 local time, the local model proxy also returned intermittent
+  connection errors. Runs touched by either were discarded and re-run. The kept
+  results have no API failures, and their remaining errors are 600 s timeouts.
+
+| Skill | Length old → new | Old passed | New passed | Notes |
+|---|---:|---:|---:|---|
+| authoring-skills | 405 → 297 | 7/8 | 8/8 | `.claude/commands/deploy.md` conversion went from 0/3 to 2/3. An earlier new-only run scored 0/3, so this is within noise. |
+| building-llm-applications | 575 → 291 | 8/8 | 7/8 | The negative "cheapest per-token pricing" query timed out 3/3 in the new run (old 0/3). It was not misrouted. |
+| designing-apis | 456 → 291 | 7/7 | 7/7 | The new description triggered 1/3 on "set up a message broker cluster", below the threshold. |
+| designing-modules | 558 → 297 | 8/8 | 8/8 | |
+| evaluating-skills | 398 → 299 | 5/8 | 7/8 | "review this pull request for bugs" timed out 3/3 in both. |
+| reviewing-code | 607 → 298 | 8/8 | 8/8 | |
+| reviewing-designs | 445 → 287 | 8/8 | 8/8 | |
+| selecting-technologies | 555 → 296 | 8/8 | 8/8 | |
+| writing-adrs | 463 → 299 | 6/8 | 7/8 | |
+| writing-tests | 446 → 298 | 6/8 | 6/8 | Flaky-test 1/3 → 0/3; the retry wrapper is 1/3 in both. |
+| **Total** | | **71/79** (7 FN, 0 FP) | **74/79** (3 FN, 0 FP) | |
+
+No regression is visible. With 7–8 queries and 3 runs each, the gains are within
+run-to-run noise: the same new `authoring-skills` description scored 7/8 and 8/8 in
+two runs. Results are the `*-validation.json` files written on 2026-11-15 (UTC)
+under `.workspace/<skill>/triggers/`.
+
 ## `reviewing-designs` redesign (2026-11-02, `claude-haiku-5-5`)
 
 The body was rewritten from the Anthropic review designs listed in its

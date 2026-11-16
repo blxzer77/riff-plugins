@@ -27,6 +27,8 @@ in any spec-compliant agent; no skill may depend on one vendor's client.
 - Author skills with `skills/authoring-skills/SKILL.md`; evaluate them with
   `skills/evaluating-skills/SKILL.md`. Both are binding for this repository.
 - Frontmatter uses only `name`, `description`, `license`, `compatibility`, `metadata`.
+- A `description` is at most 300 characters (the spec allows 1024); the validator
+  enforces it.
 - No vendor-specific tool names, environment variables, slash commands, or paths in
   skill bodies. Where a capability may be missing, describe both branches.
 - Every skill has `evals/<name>/evals.json` (≥ 3 cases) and

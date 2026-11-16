@@ -1,6 +1,6 @@
 ---
 name: reviewing-designs
-description: Reviews architecture proposals, ADRs, RFCs, and implementation plans against the actual project, surfacing high-confidence risks in scope, tradeoffs, module boundaries, API evolution, tests, security, and operational fit. Use when the user asks for a design review, architecture review, ADR review, RFC review, or a sanity check before implementation, including when the design is only in chat. Not for reviewing a code diff; use reviewing-code.
+description: Reviews architecture proposals, ADRs, RFCs and plans against the actual project, surfacing high-confidence risks. Use when asked for a design, architecture, ADR or RFC review, or a sanity check before implementing, even if the design is only in chat. Not for code diffs (reviewing-code).
 license: Apache-2.0
 metadata:
   verified-on: "2026-11-02"

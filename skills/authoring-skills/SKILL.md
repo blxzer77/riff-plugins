@@ -1,6 +1,6 @@
 ---
 name: authoring-skills
-description: Creates and revises Agent Skills that work across agent clients, from scoping and frontmatter through body structure, references, scripts, and eval cases. Use when the user wants to write a new skill, turn a workflow or recurring correction into a skill, restructure or shorten an existing skill, or fix a description that is not triggering. Not for measuring an existing skill; that is evaluating-skills.
+description: Creates and revises Agent Skills (scope, frontmatter, body, references, scripts, evals). Use when writing a skill, turning a workflow or recurring correction into one, restructuring or shortening a skill, or fixing a description that doesn't trigger. Not for measuring a skill (evaluating-skills).
 license: Apache-2.0
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: designing-apis
-description: Designs and safely evolves application APIs around real client needs, maintainability, and explicit compatibility contracts. Use when choosing an API shape, adding or changing endpoints, defining errors, pagination, filtering, idempotency, asynchronous work, streaming, webhooks, or versioning, or when reviewing an API change before implementation. Not for teaching HTTP basics, building generic SDKs, or choosing infrastructure without a client contract.
+description: Designs and safely evolves APIs around real client needs and explicit compatibility. Use when choosing an API shape, adding or changing endpoints, errors, pagination, idempotency, async work, streaming, webhooks or versioning, or reviewing an API change. Not for HTTP basics or generic SDKs.
 license: Apache-2.0
 ---
 

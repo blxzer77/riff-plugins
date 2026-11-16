@@ -1,6 +1,6 @@
 ---
 name: designing-modules
-description: Draws, enforces, and changes module boundaries in an existing codebase, proportionate to its size and team, so features can change without reaching into each other's internals. Use when splitting or extracting a module, moving code between modules, fixing modules that import each other's internals or each other in a cycle, adding boundary checks, or deciding whether to introduce packages or services, even if the user only says the code is tangled or hard to change. Not for object-oriented design lessons, choosing a technology, or designing an HTTP API.
+description: Draws and enforces module boundaries in existing code. Use when splitting or extracting a module, moving code across modules, fixing internal or cyclic imports, adding boundary checks, weighing packages vs services, or untangling hard-to-change code. Not for OO lessons, tech choice or API design.
 license: Apache-2.0
 metadata:
   verified-on: "2026-11-01"

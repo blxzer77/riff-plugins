@@ -1,6 +1,6 @@
 ---
 name: selecting-technologies
-description: Chooses which library, runtime version, base image, datastore, queue, hosting service, or model to use, and checks that choice against the project and against current release, end-of-life, and deprecation facts rather than memory. Use when adding a dependency, picking a version or image tag, wiring in an external service or LLM model, replacing a framework or datastore, or when the user asks which option to use, even if they only ask to "add", "switch to", or "set up" something. Not for code changes that use only what the project already depends on.
+description: Chooses technology against the project and current release/EOL facts. Use when adding a dependency, picking a library, version, image, datastore, service or model, replacing a framework, or asked which to use, even if told only to add or set up something. Not for work with existing dependencies.
 license: Apache-2.0
 metadata:
   verified-on: "2026-11-02"

@@ -1,6 +1,6 @@
 ---
 name: building-llm-applications
-description: Designs and implements LLM-powered features with the least complex architecture that meets the task, then hardens them with tool design, retrieval choices, injection defenses, and evals. Use when building or changing anything that calls a language model, including extraction, classification, RAG, tool calling, agents, or multi-agent workflows, and when an AI feature is unreliable, too slow, too expensive, or hard to evaluate, even if the user names only a framework or a vector database. Not for ordinary features with no model call, or for choosing a model vendor alone.
+description: Designs simple, hardened LLM features. Use when building anything that calls a model (extraction, RAG, tools, agents), or an AI feature is unreliable, slow, costly or hard to evaluate, even if only a framework or vector DB is named. Not for code with no model call or picking a vendor alone.
 license: Apache-2.0
 metadata:
   verified-on: "2026-11-01"

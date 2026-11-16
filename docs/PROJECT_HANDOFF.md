@@ -128,6 +128,10 @@ e519d0dd4d16be63b956fd35ab52fd6644840328
 
 - 当前只用本机 `cometix` 运行评测，模型固定为 `deepseek-flash`；不做 Pi、Codex、Nyan 或跨 agent/model 对比。
 - `cometix` 通过 Claude Code-compatible adapter 接入；评测时使用独立的 bwrap 包装，避免 agent 离开 sandbox 读取本机其他项目。
+- 例外（2026-11-16）：description 压缩的 trigger 对比按用户要求改用本机 `nyan` + `deepseek-flash`。
+  - 接法：claude-code adapter，`--agent-bin ~/.cache/riff-skills/bin/nyan-sandboxed --agent-home ~/.cache/riff-skills/nyan-home`。
+  - 结果不与 cometix 结果比较。
+- 并发上限：同时运行的 agent 总数保持在 4 个左右，到 12 个就会触发 `429 rate_limit_error`；本地模型代理偶有连接错误。受影响的结果必须丢弃重跑。
 - `run_evals.py` 使用独立 sandbox，并对 agent 终态 API 错误做重试；每次 attempt 保留，成本统计包含所有 attempt。
 - timeout、429/rate-limit、API error、invalid grading 和未加载 skill 的 with-run 不进入 treatment effect；它们分别记录在 `timing.json`/`benchmark.json`。
 - grader 使用稳定 assertion ID，并读取 treated/baseline 元数据；无法可靠关联证据时 grading 标为 invalid。
@@ -149,6 +153,9 @@ e519d0dd4d16be63b956fd35ab52fd6644840328
 - 已按 Anthropic / Claude Code 实践重做 review、LLM application、module、technology-selection、design-review 和 evaluation skill；详细结果和成本见 `docs/EVALUATION_RESULTS.md`。
 - 这些结论是每个 case 三次运行的方向性证据，不能泛化为 skill 的全部能力。
 - 用户已决定在 2026-11-02 收尾评测阶段，不再为统一模型而重跑现有结果；Haiku 结果与 deepseek 结果保持分开记录。
+- 所有 skill 的 description 已压缩到 300 字符以内，`scripts/validate.py` 会拒绝更长的描述。
+  - 新旧描述在 validation 集上的 trigger 对比：旧 71/79，新 74/79，均无误触发，未见退化。
+  - 详见 `docs/EVALUATION_RESULTS.md` 的 "Description length cap"。
 - 仓库当前包含 10 个可发布 skill；`template/SKILL.template.md` 是内部模板，不会被通用 skills CLI 安装。
 
 ## 下一步顺序

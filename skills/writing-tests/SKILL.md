@@ -1,6 +1,6 @@
 ---
 name: writing-tests
-description: Writes tests that catch real regressions and preserves observable behavior during fixes, feature work, and code modernization. Use when fixing a bug, adding or changing behavior, refactoring or modernizing code (especially code without tests), raising or judging coverage, choosing a test strategy, or repairing a flaky or over-mocked suite, even if the user only asks for cleanup and never mentions tests. Not for configuring CI or load testing.
+description: Writes tests that catch regressions and preserve behavior. Use when fixing a bug, adding or changing behavior, refactoring (especially untested code), judging coverage, choosing a test strategy, or fixing flaky or over-mocked tests, even if tests aren't mentioned. Not for CI setup or load testing.
 license: Apache-2.0
 metadata:
   verified-on: "2026-10-30"

@@ -3,7 +3,7 @@
 
 Checks every directory under skills/ (or the paths given):
   spec       frontmatter fields, name and description rules, name == directory
-  repo       vendor-neutral frontmatter, reserved words, description shape,
+  repo       vendor-neutral frontmatter, reserved words, description shape and length,
              body length, local file references, evals files, marketplace listing
 
 Exit codes: 0 = no errors, 1 = errors found, 2 = usage error.
@@ -29,6 +29,9 @@ SPEC_FIELDS = {"name", "description", "license", "compatibility", "metadata", "a
 REPO_FIELDS = {"name", "description", "license", "compatibility", "metadata"}
 RESERVED = ("anthropic", "claude", "openai", "codex", "gemini")
 MAX_BODY_LINES = 500
+# The spec allows 1024 characters; this repository keeps descriptions short because
+# some clients truncate or condense long ones in the skill list.
+MAX_DESCRIPTION_CHARS = 300
 NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 LINK_RE = re.compile(r"\]\(([^)#\s]+)(?:#[^)]*)?\)")
 # Backticked paths are checked only in SKILL.md, where they name the skill's own files;
@@ -111,6 +114,8 @@ def check_skill(skill_dir: Path, rep: Report) -> str | None:
         desc = " ".join(desc.split())
         if len(desc) > 1024:
             rep.error(where, f"description is {len(desc)} chars; maximum is 1024")
+        elif len(desc) > MAX_DESCRIPTION_CHARS:
+            rep.error(where, f"description is {len(desc)} chars; this repository's maximum is {MAX_DESCRIPTION_CHARS}")
         if "<" in desc or ">" in desc:
             rep.error(where, "description must not contain angle brackets")
         if "Use when" not in desc:

@@ -1,6 +1,6 @@
 ---
 name: writing-adrs
-description: Writes and maintains Architecture Decision Records that capture the context, real alternatives, chosen option, and honest consequences of a technical decision. Use when the user asks for an ADR or decision record, and also whenever a change adds or replaces a framework, library, datastore, or external service, alters module or API boundaries, or settles a cross-cutting approach, even if nobody mentions ADRs. Not for general design documents or README updates.
+description: Writes and updates decision records (ADRs). Use when asked for an ADR or decision record, or when a change adds or replaces a framework, library, datastore or service, alters module or API boundaries, or settles a cross-cutting approach, even if nobody mentions ADRs. Not for design docs or READMEs.
 license: Apache-2.0
 ---
 

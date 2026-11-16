@@ -1,6 +1,6 @@
 ---
 name: evaluating-skills
-description: Evaluates Agent Skills with a static review, trigger tests, and with-versus-without output benchmarks graded on evidence, then improves the skill or its description from the results. Use when the user wants to test, benchmark, review, compare versions of, or tune the triggering of a skill, or asks whether a skill actually helps. Not for writing a new skill from scratch; that is authoring-skills.
+description: Evaluates Agent Skills with static review, trigger tests and with/without benchmarks, then improves them. Use when testing, benchmarking or reviewing a skill, comparing its versions, tuning its triggering, or asking if it helps or is worth its tokens. Not for writing a new skill (authoring-skills).
 license: Apache-2.0
 ---
 

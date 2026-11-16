@@ -1,6 +1,6 @@
 ---
 name: reviewing-code
-description: Reviews a proposed code change and reports only high-signal defects the change introduces, each verified against the code before it is reported. Use when examining a diff, patch, pull request, branch, staged or committed changes for bugs, regressions, security vulnerabilities, or project-rule violations, including when the user asks whether a change is safe to merge or wants their own work checked before opening a pull request. Not for implementing fixes or acting on review comments someone already left, auditing a whole repository without a change scope, adding tests, or reviewing designs and prose.
+description: Reviews a code change for verified, high-signal defects it introduces. Use when checking a diff, PR, branch or staged changes for bugs, regressions, security or project-rule violations, or if it's safe to merge. Not for applying fixes or review comments, whole-repo audits, adding tests or designs.
 license: Apache-2.0
 metadata:
   verified-on: "2026-11-01"
