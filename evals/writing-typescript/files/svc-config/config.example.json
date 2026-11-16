@@ -1,0 +1,13 @@
+{
+  "service": "orders",
+  "port": 8080,
+  "logLevel": "info",
+  "db": {
+    "host": "db-primary.internal",
+    "port": 5432,
+    "replicas": [
+      { "host": "db-replica-1.internal", "port": 5432 },
+      { "host": "db-replica-2.internal", "port": 5432 }
+    ]
+  }
+}

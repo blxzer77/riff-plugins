@@ -23,6 +23,20 @@ The evaluation workflow, file formats, and grader/comparator/analyzer roles in
 adapters, per-run sandboxes, unified field names, baseline-relative deltas, and
 rewritten role prompts.
 
+## pstack
+
+Source: https://github.com/cursor/plugins/tree/main/pstack, commit
+`bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7`. MIT License, Copyright (c) 2026 Lauren
+Tan.
+
+Used as source material for practices in `writing-tests`, `designing-modules`,
+`reviewing-code`, `reviewing-designs`, and `authoring-skills`; for the new skills
+`debugging-failures`, `writing-typescript`, `verifying-changes`, and
+`measuring-performance`; and for the rule table in `AGENTS.md`. The
+practices are rewritten in this repository's words and checked against a primary
+source where one exists; no upstream text is reproduced. The mapping from upstream
+files to skills, and what was left out and why, is in `sources/pstack.yaml`.
+
 ## Review, design-review, technology-selection, and LLM-application guidance
 
 Principles in `reviewing-code`, `reviewing-designs`, `selecting-technologies`, and

@@ -19,6 +19,153 @@
 > 2026-11-16 a minimal probe succeeded again; probe before every batch, because the
 > local proxy still drops connections at times.
 
+## New skill `verifying-changes` (2026-11-16, `nyan` + `deepseek-flash`)
+
+Built evals first like the other new skills (`tests/test_verifying_changes_checks.py`;
+practices from pstack's prove-it-works, checked against the Claude Code best
+practices). Three runs per configuration, four at a time.
+
+| Case | Adopted description | First description | Without skill |
+|---|---:|---:|---:|
+| default-comes-from-config (shipped config overrides the code default) | 1.00 (3/3 loaded) | 1.00 (1/3 loaded) | 1.00 |
+| second-copy-of-a-setting (middleware keeps its own 15-minute limit) | 1.00 (3/3) | 1.00 (3/3) | 0.83 |
+| cannot-run-the-real-thing (retries; the real store is production only) | 1.00 (2/3) | 1.00 (1/3) | 0.67 |
+| **Mean** | **1.00** | **1.00** | **0.83** |
+
+- Every run in every configuration made the mechanical checks pass. The gain is in
+  the report: no baseline run told the user the retries were never tried against
+  the real report store (0/3), and one baseline run never checked a session idle
+  beyond 15 minutes.
+- The first description ("Use when finishing a feature, fix or config change,
+  before saying it works…") was loaded in only 5 of 9 with-skill runs: the
+  prompts ask for a change, not for verification. The adopted one says "Use when
+  implementing a feature, fix, default or config change and before saying it
+  works…" and was loaded in 8 of 9 (iteration 2, with-skill only, compared with
+  the iteration-1 baseline). Scores are over loaded runs.
+- `default-comes-from-config` passes without the skill and should be made harder.
+- Cost: about 0.44M vs 0.38M tokens per run; time about equal.
+
+Triggering (installed alone, 3 runs per query, threshold 0.5, all 20 queries):
+
+| Description | Train pos | Train neg | Validation pos | Validation neg | Total |
+|---|---:|---:|---:|---:|---:|
+| first | 5/6 | 6/6 | 3/4 | 4/4 | 18/20 |
+| adopted | 6/6 | 6/6 | 2/4 | 4/4 | 18/20 |
+
+The adopted description fixes the train miss ("double-check the generated invoice
+really uses the new template") but "the feature flag is on, confirm users actually
+get the new flow" fell from 2/3 to 1/3, and "did the switch to the new payments
+client actually take effect?" stays at 0/3. It was chosen for loading during real
+change requests, which the trigger set does not contain.
+
+Results: `.workspace/verifying-changes/iteration-1/` (baseline and first
+description), `iteration-2/` (adopted description), `triggers/`.
+
+## New skill `measuring-performance` (2026-11-16, `nyan` + `deepseek-flash`)
+
+Built the same way as `debugging-failures` (from pstack's benchmark checklist,
+checked against Brendan Gregg's active benchmarking and the Python profiler docs):
+fixtures and checks first (`tests/test_measuring_performance_checks.py`), a
+baseline against a placeholder skill, then the body. Three runs per configuration,
+four at a time; all nine with-skill runs loaded the skill.
+
+| Case | With skill | Without skill |
+|---|---:|---:|
+| wrong-suspect (user blames json.dumps; cost is a linear customer scan) | 1.00 | 1.00 |
+| faster-but-different (dedupe_fast is faster but loses order callers need) | 1.00 | 0.67 |
+| noise-not-regression (a 12% alert after a variable rename) | 1.00 | 1.00 |
+| **Mean** | **1.00** | **0.89** |
+
+- Without the skill, deepseek-flash already profiled before optimizing, kept the
+  export output identical (all runs at least 10x faster), and called the 12% alert
+  noise after rerunning the benchmark. Those cases do not discriminate and should
+  be made harder.
+- The gain is in comparing implementations: no baseline run timed both functions
+  with repeated runs on more than one input size (one timed nothing, one used a
+  single size, one only checked ordering). With the skill, 3/3 did. Every run in
+  both configurations noticed the lost ordering and kept the callers on `dedupe`.
+- Cost: 0.49M vs 0.51M tokens and 64 s vs 104 s per run; the baseline spent longer
+  on the noise case (272 s vs 122 s).
+
+Results: `.workspace/measuring-performance/iteration-1/`.
+
+Triggering (installed alone, 3 runs per query, threshold 0.5, all 20 queries):
+17/20, no false positives, all train queries pass. The validation query "someone
+rewrote send.go and says it's 5x faster, check that" triggers 1/3. Two runs ended
+in agent errors and are not counted, so two queries rest on two runs. The
+description was kept. Results: `.workspace/measuring-performance/triggers/`.
+
+## New skills `debugging-failures` and `writing-typescript` (2026-11-16, `nyan` + `deepseek-flash`)
+
+Both skills come from reading pstack (`cursor/plugins` `bf0c7cd`, MIT) and were built
+evals first: fixtures, mechanical checks, and tests for the checks
+(`tests/test_debugging_failures_checks.py`, `tests/test_writing_typescript_checks.py`)
+before any body. Three runs per configuration, four agents at a time, 900 s timeout.
+The baseline ran before the bodies existed, against a placeholder skill directory
+with `--configs without_skill`; the with-skill runs were added to the same
+iteration later.
+
+TypeScript fixtures need node and tsc inside the sandbox. `nyan-sandboxed` now takes
+two optional read-only binds, `RIFF_SANDBOX_NODE_DIR` (node 24.21.0) and
+`RIFF_SANDBOX_TYPESCRIPT_DIR` (an installed TypeScript 5.9.3), and puts them on the
+sandbox `PATH`; without them nothing changes. Nothing was installed. The checks
+also pass on TypeScript 7.0.2.
+
+| Case | With skill | Without skill |
+|---|---:|---:|
+| debugging: misleading-hypothesis (user blames encoding; cause is quoted commas) | 1.00 | 0.89 |
+| debugging: retry-scope (retry transient gateway errors only) | 1.00 | 0.67 |
+| debugging: symptom-at-the-caller (mutable default; a second caller is affected) | 1.00 | 0.67 |
+| **debugging mean** | **1.00** | **0.74** |
+| typescript: config-boundary (reject a malformed config at load) | 1.00 | 0.89 |
+| typescript: union-member-added (new event kind; switches with fallbacks) | 1.00 | 0.00 |
+| typescript: absent-value (lastSeen for users with no sessions) | 1.00 | 1.00 |
+| typescript: same-typed-arguments (swapped recipient must not compile) | 1.00 | 1.00 |
+| **typescript mean** | **1.00** | **0.72** |
+
+- Debugging: every baseline run fixed the bug (all mechanical checks pass in both
+  configurations). The skill changed the process and the report. Without it, no
+  `retry-scope` run reproduced the failure before editing `charge.py` (0/3), and no
+  `symptom-at-the-caller` run told the user that the dashboard caller was affected
+  (0/3). With it, 3/3 and 3/3.
+- TypeScript: without the skill, every `union-member-added` run added the new case
+  and kept the `default` fallbacks, so a further event kind still compiles and
+  renders "Unknown activity" (0/3 on the mutation check). With the skill, 3/3 made
+  both switches exhaustive. One `config-boundary` baseline asserted the log level
+  into its union type (`as LogLevel`) after a string check.
+- `absent-value` and `same-typed-arguments` pass in both configurations and should be
+  replaced by harder cases. Several judged assertions in the debugging cases also
+  pass in both.
+- One with-skill run (`misleading-hypothesis` run-2) did not load the skill. It is
+  excluded, so that case's with-skill score comes from two runs. Grading was
+  otherwise valid; there were no API errors or timeouts.
+- Cost: debugging 0.58M vs 0.34M tokens and 39 s vs 22 s per run; TypeScript 0.50M
+  vs 0.36M tokens and 37 s vs 25 s.
+- Before switching to nyan, one run per case without the skill was done by Claude
+  subagents in this session (model not recorded, not comparable). They also passed
+  every debugging check, and failed only `union-member-added` among the TypeScript
+  cases.
+
+Results: `.workspace/debugging-failures/iteration-1/`, `.workspace/writing-typescript/iteration-1/`.
+
+Triggering, each skill installed alone, 3 runs per query, threshold 0.5, 600 s
+timeout, all 20 queries:
+
+| Skill / description | Train pos | Train neg | Validation pos | Validation neg | Total |
+|---|---:|---:|---:|---:|---:|
+| debugging-failures | 6/6 | 6/6 | 4/4 | 4/4 | 20/20 |
+| writing-typescript, first description | 4/6 | 6/6 | 2/4 | 4/4 | 16/20 |
+| writing-typescript, adopted description | 6/6 | 6/6 | 3/4 | 3/4 | 18/20 |
+
+- The first TypeScript description listed mechanics (parsing outside data, union
+  members, maybe-missing values) and missed "type this `any` fetch result" and
+  "port this package to TypeScript". The adopted one names those situations and
+  "writing or changing TypeScript types". It was revised on the train failures only.
+- Still open on validation: "the switch has a default that hides new statuses"
+  triggers 1/3 (0/3 before), and "OrderList.tsx is slow with 10k rows" now triggers
+  2/3, a false positive.
+- Results: `.workspace/{debugging-failures,writing-typescript}/triggers/`.
+
 ## `reviewing-designs` on deepseek-flash (2026-11-16, `nyan` + `deepseek-flash`)
 
 The 2026-11-02 redesign was measured only on haiku. This repeats it on the evaluation

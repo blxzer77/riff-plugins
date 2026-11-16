@@ -1,0 +1,122 @@
+[
+  {
+    "query": "GET /orders is slow for accounts with lots of orders (server/routes/orders.js), can you speed it up",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "billing/pdf.py takes 9 seconds per invoice, make it faster",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "the perf dashboard says checkout p95 went from 180ms to 260ms after last week's deploy, find out why",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "is a Map faster than a plain object for the buckets in src/lib/rateLimiter.ts? measure it",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "the export in cli/main.py uses 3GB of memory on big accounts, bring that down",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "OrderList.tsx janks when scrolling 5k orders, make it smoother",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "expired cards get a 500 on /checkout, fix it",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "add a --since filter to the export command in cli/main.py",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "write tests for billing/pdf.py",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "review my PR that adds an index to the orders table",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "set up Grafana dashboards and latency alerts for the API",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "write a k6 load test script for /checkout",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "billing/sync.py got about 2x slower since we upgraded the db driver, why?",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "someone rewrote src/webhooks/send.go with goroutines and says it's 5x faster. check that before we merge",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "the summarize step (prompts/summarize.md) is too slow end to end, cut the latency",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "the nightly benchmark job flagged a 15% regression in billing/services.py, is it real or noise?",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "should we use Redis or Memcached for caching sessions?",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "explain what src/lib/rateLimiter.ts does",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "refactor billing/services.py into smaller functions without changing behavior",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "add retries with backoff to the webhook sender",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  }
+]

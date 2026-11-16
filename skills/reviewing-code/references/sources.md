@@ -12,6 +12,7 @@ It keeps their principles and drops client-specific tools and commands. Verified
 | `anthropics/claude-code-security-review`, `.claude/commands/security-review.md` and `claudecode/findings_filter.py` | `0c6a49f` | Security categories; repository context before assessment; hard exclusions and precedents; exploit scenario per finding |
 | Claude Code docs: Code Review, Code Review severity levels | fetched 2026-10-31 | Find, verify, rank, report stages; correctness over formatting and missing tests; separate pre-existing severity; never approve or block |
 | Claude Code docs: best practices, adversarial review step | fetched 2026-10-31 | Fresh reviewer that sees the diff and criteria, not the reasoning; reviewers prompted to find gaps over-report, so flag only what affects correctness |
+| pstack `skills/interrogate/SKILL.md` and `skills/blast-radius/SKILL.md` (`cursor/plugins`) | `bf0c7cd`, MIT; read 2026-11-16 | Prove a finding by running it when possible; keep every verified finding from several reviewers instead of voting; look for consumers a symbol search does not show |
 
 URLs:
 
@@ -19,3 +20,4 @@ URLs:
 - https://github.com/anthropics/claude-code-security-review
 - https://code.claude.com/docs/en/code-review
 - https://code.claude.com/docs/en/best-practices
+- https://github.com/cursor/plugins/tree/main/pstack

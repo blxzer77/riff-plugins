@@ -1,0 +1,50 @@
+{
+  "skill_name": "writing-typescript",
+  "evals": [
+    {
+      "id": 1,
+      "name": "config-boundary",
+      "prompt": "prod went down after a config push: `TypeError: config.db.replicas is not iterable` thrown from readHosts. someone wrote replicas as a single object instead of a list. we'll fix the file, but a broken config.json should be rejected when it's loaded, with an error that says what's wrong, not blow up later somewhere random.",
+      "expected_output": "parseConfig treats JSON.parse's result as unknown and checks every field the Config type promises (service, port, logLevel, db.host, db.port, each replica's host and port), throwing an error that names the bad field. The returned value is built from checked parts, so no `as Config` remains. tsc and the tests pass; a test covers a malformed config.",
+      "files": ["files/svc-config"],
+      "assertions": [
+        {"text": "Malformed configs fail at load with the field named, with no type assertion or escape in config.ts", "script": "checks/config_rejected_at_load.py"},
+        "A test was added that loads a malformed config and expects an error",
+        "The tool calls show tsc being run after the change"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "union-member-added",
+      "prompt": "add a `renamed` event to the activity feed (it carries `from` and `to`). the line should read like `Renamed \"Old\" to \"New\"` and use the ✏️ icon.",
+      "expected_output": "The union gains { kind: \"renamed\"; id; from; to }, describe and iconFor handle it, and both switches end in an exhaustiveness check (an assertNever/never default or a Record keyed by kind) so that the next event kind fails tsc where it is unhandled instead of rendering 'Unknown activity'. tsc and tests pass.",
+      "files": ["files/activity-feed"],
+      "assertions": [
+        {"text": "renamed renders as asked, and adding another kind makes tsc fail in both feed.ts and icons.ts", "script": "checks/feed_exhaustive.py"},
+        "The response mentions that a future event kind will now be caught by the type checker"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "absent-value",
+      "prompt": "add `lastSeen(userId)` to SessionStore for the admin page: when the user was last active, i.e. the end of their latest session, or now if it's still open.",
+      "expected_output": "lastSeen returns the latest activity time across the user's sessions regardless of insertion order (open sessions count as now, injectable like totalMinutes), and its return type says a user may have no sessions (undefined or null) instead of using `!`, returning 0, or throwing. tsc passes and tests cover no sessions, unordered sessions and an open session.",
+      "files": ["files/sessions"],
+      "assertions": [
+        {"text": "lastSeen handles no sessions, unordered sessions and open sessions, without new non-null assertions or casts", "script": "checks/last_seen_absent.py"},
+        "Tests were added for a user with no sessions and for an open session"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "same-typed-arguments",
+      "prompt": "last week invoices went out addressed to \"Dear ana@example.com\" and sent to \"Ana Ruiz\". someone swapped the arguments in billing.ts. fix it, and make that kind of mix-up fail to compile from now on.",
+      "expected_output": "billCustomer passes the email as the recipient. The recipient can no longer be any string: either a branded Email type created only by one parsing function (the single place with a cast) or a named-field parameter object. A swapped call fails tsc; tsc and tests pass.",
+      "files": ["files/invoicing"],
+      "assertions": [
+        {"text": "The call is fixed, a swapped recipient fails tsc, and casts are confined to one place", "script": "checks/invoice_swap_rejected.py"},
+        "The tool calls show tsc rejecting a swapped call, or the response explains how the swap is now rejected by the compiler"
+      ]
+    }
+  ]
+}

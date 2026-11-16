@@ -27,6 +27,7 @@ choice.
 | Malte Ubl, "Design Docs at Google" | A design doc records trade-offs against goals and non-goals; alternatives explain why they lost; cross-cutting concerns get short sections; reviews are useful but are overhead |
 | Michael Nygard, "Documenting Architecture Decisions" (2011) | Accepted decisions stay until a later record marks them superseded |
 | Martin Fowler, ParallelChange | Backward-incompatible interface changes go through expand, migrate, contract |
+| pstack `skills/poteto-help/references/prompting.md` (`cursor/plugins` `bf0c7cd`, MIT; read 2026-11-16) | Adversarial review of an abstract plan invents risks; let a prototype settle open questions |
 
 URLs:
 
@@ -35,3 +36,4 @@ URLs:
 - https://www.industrialempathy.com/posts/design-docs-at-google/
 - https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions
 - https://martinfowler.com/bliki/ParallelChange.html
+- https://github.com/cursor/plugins/tree/main/pstack

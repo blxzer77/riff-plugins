@@ -99,6 +99,10 @@ questions the implementer can answer while building.
   does not change the review.
 - Reviewers asked for problems tend to find some. If the design is sound for this
   project, say so plainly.
+- A plan that is not built yet invites risks about how it might be coded. A risk you
+  cannot tie to the proposal text and a project fact is a guess: list it as an open
+  question, marked unproven, that a prototype or the implementer settles. It does
+  not change the verdict.
 
 ## References
 

@@ -1,0 +1,2 @@
+SESSION_TTL_MINUTES = 15
+COOKIE_NAME = "portal_session"

@@ -1,0 +1,122 @@
+[
+  {
+    "query": "I changed the default page size in server/routes/orders.js to 50. check it actually works end to end",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "the --since flag for the cli export is written, make sure it really works before you call it done",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "we raised the rate limit to 200/min in the config. confirm the server actually enforces 200 now",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "tests pass on my branch but I'm not sure the new webhook signature header is really sent. verify it",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "you switched billing/pdf.py to the new template, double-check the generated invoice really uses it",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "I updated .github/workflows/ci.yml to run on Python 3.13, make sure it actually does",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "review this diff to server/routes/orders.js before I merge",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "write unit tests for src/lib/rateLimiter.ts",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "checkout crashes with TypeError in server/routes/checkout.js, find out why",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "make GET /orders faster",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "design the API for exporting orders",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "write an ADR for moving to the new payments client",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "the new-checkout feature flag is on in config, confirm users actually get the new flow",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "after your change, prove the export no longer includes deleted orders",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "did the switch to the new payments client in server/payments.js actually take effect? check before we deploy",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "tests are green so I think the fix works, can you confirm it for real?",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "set up a CI pipeline with lint and test jobs",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "explain how webhooks are signed in src/webhooks/send.go",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "tests/integration/test_sync.py is flaky, fix it",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "Jest or Vitest for the frontend tests?",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  }
+]

@@ -39,6 +39,10 @@ Skill 必须遵循 [Agent Skills specification](https://agentskills.io/specifica
 | `designing-modules` | 按项目规模设计模块边界，避免过早分布式化 |
 | `designing-apis` | 设计可维护、可演进的 API 契约 |
 | `writing-tests` | 回归测试、行为测试、flaky test、mutation 思维 |
+| `debugging-failures` | 先复现再找根因，在源头修，不靠放宽异常处理掩盖症状 |
+| `writing-typescript` | 外部数据先当 unknown 校验、联合类型穷尽检查、可空值、防参数串位 |
+| `verifying-changes` | 按真实运行方式验证改动，并如实列出未验证的部分 |
+| `measuring-performance` | 先测再改、找瓶颈、重复测量，单次告警不等于回归 |
 | `writing-adrs` | 主动识别重大决策并写 ADR |
 | `reviewing-code` | 正确性、测试、静默失败、安全、简化等代码审查 |
 | `reviewing-designs` | 架构、ADR、RFC、模块/API 方案审查 |
@@ -62,6 +66,7 @@ evals/<name>/                      # 评测、fixture、checks（不随 skill �
 template/SKILL.template.md         # skill 模板，不参与分发
 scripts/validate.py                # 仓库级校验
 sources/sdframe.yaml               # 上游素材到 skill 的裁剪映射
+sources/pstack.yaml                # cursor/plugins pstack 的取舍映射（2026-11-16）
 docs/PROJECT_HANDOFF.md            # 本文件
 docs/EVALUATION_RESULTS.md         # 已完成评测和限制
 ```
@@ -131,6 +136,11 @@ e519d0dd4d16be63b956fd35ab52fd6644840328
 - 两个 agent 都通过 Claude Code-compatible adapter 接入，并在 bwrap 包装里运行：
   - cometix：`--agent-bin ~/.cache/riff-skills/bin/cometix-sandboxed --agent-home ~/.cache/riff-skills/cometix-home`
   - nyan：`--agent-bin ~/.cache/riff-skills/bin/nyan-sandboxed --agent-home ~/.cache/riff-skills/nyan-home`
+  - nyan 包装脚本（2026-11-16 起）支持两个可选只读挂载，供 TypeScript 用例使用：
+    `RIFF_SANDBOX_NODE_DIR`（node 安装目录，挂到 `/tmp/riff-node`）和
+    `RIFF_SANDBOX_TYPESCRIPT_DIR`（typescript 包目录，挂到 `/tmp/riff-typescript`），
+    都会加进沙箱 PATH；不设置时行为不变。评分时设置 `TSC` 指向同一个 tsc。
+  - `tests/test_writing_typescript_checks.py` 需要 tsc（`TSC` 或 PATH），没有时跳过。
 - 仓库里的评测脚本本身不隔离文件系统。包装脚本缺失时先重建，不要裸跑 agent。
 - 2026-11-16 起，评测脚本不再信任 agent 工作目录里的任何内容：
   - 安装记录保存在内存里；

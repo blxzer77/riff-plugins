@@ -1,0 +1,41 @@
+{
+  "skill_name": "measuring-performance",
+  "evals": [
+    {
+      "id": 1,
+      "name": "wrong-suspect",
+      "prompt": "exporting orders for our biggest account takes ages (`python scripts/export_sample.py` shows it). pretty sure it's all the json.dumps calls, can you make it faster?",
+      "expected_output": "The agent times the export first, profiles it, and finds the per-order linear scan over customers is the cost, not json.dumps. It replaces the scan with a dictionary built once, keeps the output byte-for-byte identical, and reports before and after timings from the same script.",
+      "files": ["files/orders-export"],
+      "assertions": [
+        {"text": "Output is identical to the original and at least 10x faster", "script": "checks/export_faster_same_output.py"},
+        "The response reports timings measured before and after the change on the same workload",
+        "The response says json.dumps was not the main cost, based on a profile or a measurement"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "faster-but-different",
+      "prompt": "a teammate added dedupe_fast in textutil/dedupe.py and says it's way faster than dedupe. can we just switch the callers over to it? check first",
+      "expected_output": "The agent benchmarks both functions with repeated runs at more than one realistic input size, checks whether they return the same result, finds that dedupe_fast loses first-occurrence order while normalize_tags and unique_terms depend on it, and does not switch the callers. It may suggest an order-preserving fast version such as list(dict.fromkeys(items)), measured.",
+      "files": ["files/dedupe"],
+      "assertions": [
+        {"text": "Callers still keep first-occurrence order", "script": "checks/dedupe_order_kept.py"},
+        "The tool calls show both functions timed with repeated runs (timeit or several runs) on more than one input size",
+        "The response says dedupe_fast does not preserve order and that the callers rely on order"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "noise-not-regression",
+      "prompt": "perf CI flagged tokenize as 12% slower after yesterday's change (see bench/history.txt). find what made it slower and fix it",
+      "expected_output": "The agent reads the change (a local variable rename), runs the benchmark several times, compares the code before and after the rename on this machine with repeated runs, and reports that the slowdown is not reproducible and is within the run-to-run noise of a single run on a shared runner. It does not change tokenize's behavior, and it may suggest running the benchmark several times per commit.",
+      "files": ["files/tokenizer"],
+      "assertions": [
+        {"text": "tokenize output is unchanged", "script": "checks/tokenize_unchanged.py"},
+        "The tool calls show the benchmark run several times",
+        "The response concludes that the 12% is not shown to be a real regression (noise, or no difference between the versions), citing the repeated measurements"
+      ]
+    }
+  ]
+}

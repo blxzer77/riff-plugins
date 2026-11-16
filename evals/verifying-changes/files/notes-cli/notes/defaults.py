@@ -1,0 +1,2 @@
+DEFAULT_FORMAT = "table"
+PAGE_SIZE = 20

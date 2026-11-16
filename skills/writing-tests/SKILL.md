@@ -22,8 +22,13 @@ redundant test; state the reason and retain the relevant existing checks.
       saw fail proves nothing.
 - [ ] If the bug was found high (end-to-end, API), narrow it: keep the high-level
       reproduction if cheap, and add the smallest test that still fails.
+- [ ] If no test can reproduce it at a reasonable cost (it needs production state,
+      a slow end-to-end rig, or mocks that would be the whole test), reproduce it
+      with the nearest check you can run again: a script, a command, a recorded
+      request. No new test is better than one that only exercises mocks.
 - [ ] Fix the code. Run the new test, then the related suite.
-- [ ] Report: the test name, that it failed before and passes now.
+- [ ] Report: the test or check, that it failed before and passes now. If you could
+      not show it failing first, say why.
 
 **New or changed behavior**
 - [ ] List the changed observable behaviors: the normal case, relevant boundaries
@@ -39,10 +44,13 @@ redundant test; state the reason and retain the relevant existing checks.
 **Refactor**
 - [ ] If the code lacks tests, first add persistent characterization tests to the
       project's normal test suite, pinning current observable behavior. Run that
-      suite against the original code and see it pass before refactoring.
+      suite against the original code and see it pass before refactoring. A clean
+      type check or lint run does not pin behavior.
 - [ ] Keep those tests unchanged while refactoring and run them again. An ad hoc
       comparison script or randomized probe can supplement the suite, but does not
       replace a durable test file in the project.
+- [ ] After a rename or a move, search the whole repository for the old name. Type
+      checkers do not see strings, configuration, documentation, or test names.
 
 **Before reporting done**: run the tests you touched plus the nearest suite. Never
 claim tests pass without running them; if you cannot run them, say so.
@@ -61,6 +69,9 @@ claim tests pass without running them; if you cannot run them, say so.
   paste its output into the assertion; that freezes bugs into the suite. The
   exception is a characterization test before a refactor, which pins today's output
   on purpose: name it as one, and point out any pinned output you think is wrong.
+- **"Nothing happened" needs a case where it happens.** "A disabled account gets no
+  reminder email" proves little until another case shows the same check can see a
+  reminder being sent.
 - **Deterministic and hermetic.** No real sleeps, wall-clock time, randomness without
   a seed, network, or shared state between tests. Inject a clock; use the runner's
   fake timers; build fresh state per test.
@@ -96,7 +107,9 @@ behavior (an email was sent, a charge was made), never on how a result was compu
 - Change production behavior to suit a test, such as moving a boundary from `>` to
   `>=`. Making code testable (injecting a clock) is fine; changing what it does is a
   separate decision the user must make. Propose it instead.
-- Update snapshots or golden files without reading the diff.
+- Update snapshots or golden files without reading the diff, or edit a baseline or
+  the harness that compares against it so a failing comparison passes. If the
+  baseline looks wrong, say so and ask.
 - Write assertion-free tests to raise coverage.
 
 ## Gotchas

@@ -1,0 +1,91 @@
+# Curation map: pstack -> riff-skills.
+# pstack is Lauren Tan's set of agent skills in the Cursor plugins repository. It is
+# source material only: practices are rewritten in this repository's words, checked
+# against a primary source where one exists, and adopted only where an eval can show
+# an effect. pstack ships no evals; "agents get this wrong" is the author's
+# experience until this repository measures it. Read 2026-11-16.
+upstream:
+  repo: https://github.com/cursor/plugins
+  path: pstack
+  commit: bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7
+  license: MIT (Copyright (c) 2026 Lauren Tan)
+adopted:
+  writing-tests:
+    - path: skills/tdd/SKILL.md
+      practice: when no test can reproduce a bug at a reasonable cost, use the nearest rerunnable check and say why no failing-before evidence exists
+    - path: skills/principle-test-behavior-not-implementation/SKILL.md
+      practice: an assertion that nothing happened needs a case where it happens
+    - path: skills/poteto-mode/playbooks/visual-parity.md
+      practice: do not edit a baseline or its harness so a failing comparison passes
+    - path: skills/poteto-mode/playbooks/refactoring.md
+      practice: a type check is not a behavior pin; after a rename, search strings, configuration, and documentation
+  designing-modules:
+    - path: skills/architect/references/design-red-flags.md
+      practice: design red flags (the first four checked against Ousterhout's CS 190 lecture notes)
+    - path: skills/principle-migrate-callers-then-delete-legacy-apis/SKILL.md
+      practice: when every caller is internal, move them and delete the old interface in one change
+    - path: skills/architect/SKILL.md
+      practice: sketch at least two structurally different interfaces before choosing ("design it twice", Ousterhout)
+  reviewing-designs:
+    - path: skills/poteto-help/references/prompting.md
+      practice: risks raised against an unbuilt plan with no project fact behind them are open questions, marked unproven
+  reviewing-code:
+    - path: skills/interrogate/SKILL.md
+      practice: prove a finding by running it when possible; keep every verified finding from several reviewers instead of voting
+    - path: skills/blast-radius/SKILL.md
+      practice: look for consumers a symbol search does not show
+  authoring-skills:
+    - path: skills/reflect/references/synthesizer.md
+      practice: triage for lessons (seen twice, durable, decision-changing, not already covered, skill was used)
+    - path: skills/correct/SKILL.md
+      practice: prefer a mechanism to prose
+  debugging-failures:
+    - path: skills/principle-fix-root-causes/SKILL.md
+      practice: ask whether the triggering state is legitimate; guards, retries and swallowed errors hide bugs; fix every instance
+    - path: skills/poteto-mode/playbooks/bug-fix.md
+      practice: reproduce before fixing; revert what a refuted hypothesis motivated; show the reproduction failing, then passing
+  writing-typescript:
+    - path: skills/typescript-best-practices/SKILL.md
+      practice: prompted the skill (checked against the TypeScript handbook, release notes and TSConfig reference)
+    - path: skills/principle-type-system-discipline/SKILL.md
+      practice: make wrong states fail to compile instead of checking them later
+  verifying-changes:
+    - path: skills/principle-prove-it-works/SKILL.md
+      practice: verify against the real artifact, not a proxy, self-report or "it compiles"
+    - path: skills/poteto-mode/playbooks/bug-fix.md
+      practice: "inconclusive" or the wrong surface is not a pass
+  measuring-performance:
+    - path: skills/benchmark-checklist/SKILL.md
+      practice: write the claim first; check limits, errors, repeatability and that the work happened (checked against Gregg's active benchmarking)
+    - path: skills/principle-explain-the-number/SKILL.md
+      practice: name the limiter ("why not double?"); a gap smaller than the spread is no difference
+  repository:
+    - path: skills/correct/SKILL.md
+      practice: a table in AGENTS.md pairing each rule with what enforces it
+    - path: skills/poteto-help/SKILL.md
+      practice: a "close calls" table for neighbouring skills in the README
+dropped:
+  - claim: one skill per principle (24 principle-* skills) behind an entry skill
+    reason: 24 always-listed descriptions with broad triggers; cannot be evaluated one by one
+  - claim: disable-model-invocation, icon, color, paths, and other client frontmatter
+    reason: outside the Agent Skills specification; this repository allows five fields
+  - claim: multi-model panels, subagent types, model slugs, /loop, AskQuestion, bugbot, control skills
+    reason: depend on one client; skills here must work in any spec-compliant agent
+  - claim: outcome-oriented execution (broken intermediate states are acceptable in a planned migration)
+    reason: conflicts with keeping the build and tests passing at each step (designing-modules)
+  - claim: never block on the human for reversible work
+    reason: conflicts with confirming sticky decisions first (selecting-technologies)
+  - claim: redesign from first principles when a requirement arrives
+    reason: pulls against the smallest change that solves the problem; only "update every reference" is kept
+  - claim: statechart and the formal-verification skills (TLA+, TLC, an external renderer)
+    reason: need a Java toolchain, network downloads, and an external service; not portable
+  - claim: personal style rules (no em dashes, no mid-sentence colons, an AI word list)
+    reason: preference without a primary source
+  - claim: review should flag narrative comments, defensive code for impossible states, and dead compatibility paths
+    reason: style and hardening are not findings in reviewing-code; reporting them raises the false-positive rate it is built to keep low
+  - claim: designing-apis needs a second candidate shape
+    reason: already required (resource vs. operation shape in the decision brief)
+  - claim: do not weaken assertions; grade from files, not the agent's report; prompts must not name the behavior under test
+    reason: already covered by writing-tests, the evaluating-skills grader, and output-evals
+  - claim: recall, ketchup, automate-me, setup-pstack, make-bot-ui
+    reason: personal workflow or client configuration, outside software engineering practice

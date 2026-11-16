@@ -1,0 +1,5 @@
+{
+  "format": "table",
+  "page_size": 20,
+  "store": "data/notes.json"
+}

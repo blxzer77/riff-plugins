@@ -25,13 +25,19 @@ are kept from depending on what is behind it.
       the decisions likely to change (a pricing rule, a storage format, a provider)
       and the code that changes together today. Group by what changes together; one
       module per hidden decision, not one per noun or layer.
-- [ ] **Define the public interface before moving code.** Decide what callers may
-      use, keep everything else private, and give each module sole ownership of its
-      data. Other modules reach that data only through the owner's interface.
+- [ ] **Define the public interface before moving code.** Sketch at least two
+      structurally different interfaces before choosing (one call that takes the
+      whole request vs. several small steps, for example); the first sketch
+      usually mirrors today's code. Decide what callers may use, keep everything
+      else private, and give each module sole ownership of its data. Other modules
+      reach that data only through the owner's interface.
 - [ ] **Move incrementally.** Introduce the new interface, switch callers to it,
       then move the implementation and delete the old path. Keep the build and tests
-      passing at each step. Read `references/migration.md` for a replacement or an
-      extraction that cannot be done in one change.
+      passing at each step. When every caller is in this repository, switch them all
+      and delete the old interface in the same change, with no shim and no second
+      path; keep a compatibility window only for callers you cannot change. Read
+      `references/migration.md` for a replacement or an extraction that cannot be
+      done in one change.
 - [ ] **Check the boundary mechanically.** Run the project's boundary checks, or add
       the smallest one that would catch the likely regression (forbidden imports,
       no cycles, protected internals). Read `references/boundary-checks.md`.
@@ -72,6 +78,7 @@ service or package.
 ## References
 
 - `references/boundary-checks.md` — read when adding or running a mechanical check on imports, cycles, or data access.
+- `references/design-red-flags.md` — read when judging a proposed split or interface, or when a module is hard to change and you cannot say why.
 - `references/migration.md` — read when replacing an implementation or extracting a module across several changes.
 - `references/scale.md` — read before proposing a new package or service.
 - `references/sources.md` — the published sources this skill follows.

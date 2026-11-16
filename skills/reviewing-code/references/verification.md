@@ -1,6 +1,6 @@
 # Verifying a candidate
 
-Verified on 2026-11-01. Adapted from the verifier designs listed in `sources.md`.
+Verified on 2026-11-16. Adapted from the verifier designs listed in `sources.md`.
 
 Each candidate gets one job: try to disprove it. It is reported only if that fails.
 
@@ -25,6 +25,23 @@ Do not invent a defense to kill a finding either. Refute only with a mitigation 
 located and read. "The framework probably escapes this" is a reason to go read the
 framework call, not a refutation.
 
+## Run it when you can
+
+A candidate you can show by running something is stronger than one you traced. If
+a failing test, a short script against the changed code, or a command would show
+the defect, run it and keep the output with the finding. Work in a scratch
+location and leave the tree under review unchanged. If the run does not show the
+failure, drop the candidate; do not keep it on the strength of the argument.
+
+## Consumers a search does not show
+
+A symbol search finds callers, not everything that depends on the changed value.
+Before clearing a change to a name, a shape, or a default, look where the search
+stops: serialized data another program reads, keys built from strings,
+configuration and templates, feature flags, and code in another language that
+reads the same bytes. A search that finds nothing is still a result; say what you
+searched for.
+
 ## Pre-existing or introduced
 
 Compare the candidate's source, sink, guards, and routes with the pre-change code.
@@ -47,3 +64,7 @@ The candidate's author is the worst verifier: they already believe it. When the
 environment supports independent workers, give each candidate to a fresh one with
 the claim, the diff, and repository access, but not the reasoning that produced the
 claim. When it does not, re-read the cited lines from scratch before keeping it.
+
+When several passes or reviewers produce candidates, verify each and keep every
+one that survives, merging those with one root cause. Do not vote: reviewers find
+different defects, so a finding only one of them raised is no weaker for it.

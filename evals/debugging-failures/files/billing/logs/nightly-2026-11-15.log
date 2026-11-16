@@ -1,0 +1,13 @@
+2026-11-15 02:00:01 INFO billing: starting run, 1843 subscriptions due
+2026-11-15 02:00:07 WARNING billing: charge failed for cus_88213: card_declined
+2026-11-15 02:00:19 WARNING billing: charge failed for cus_90551: insufficient_funds
+2026-11-15 02:03:42 ERROR billing: run aborted
+Traceback (most recent call last):
+  File "/srv/billing/billing/nightly.py", line 14, in run
+    results[customer_id] = charge_with_retry(gateway, customer_id, amount)
+  File "/srv/billing/billing/charge.py", line 13, in charge_with_retry
+    return gateway.charge(customer_id, amount_cents, idempotency_key=key)
+  File "/srv/billing/billing/gateway.py", line 41, in charge
+    raise GatewayError(body["error"], transient=body["retryable"])
+billing.gateway.GatewayError: connection_reset (transient=True)
+2026-11-15 02:03:42 INFO billing: 1206 of 1843 charged before abort

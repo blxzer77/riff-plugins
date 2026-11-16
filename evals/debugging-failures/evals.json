@@ -1,0 +1,41 @@
+{
+  "skill_name": "debugging-failures",
+  "evals": [
+    {
+      "id": 1,
+      "name": "misleading-hypothesis",
+      "prompt": "the contact import blows up since marketing added the european leads. probably an encoding thing with the umlauts? `python -m contacts data/export.csv`. can you fix it",
+      "expected_output": "The import is run and fails; the agent finds that the encoding guess is wrong and the cause is splitting on every comma while the export quotes fields that contain commas. The fix parses the file as CSV (quoting and escaped quotes), keeps errors for malformed rows, and the import of data/export.csv succeeds with all six contacts. The response corrects the user's hypothesis.",
+      "files": ["files/contacts"],
+      "assertions": [
+        {"text": "Quoted and unicode rows import exactly, malformed rows still fail, existing tests pass", "script": "checks/contacts_fixed.py"},
+        "The response says the failure is not an encoding problem and names commas inside quoted fields as the cause",
+        "The tool calls show the import command failing before the fix and succeeding after it"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "retry-scope",
+      "prompt": "nightly billing job died again last night, see logs/nightly-2026-11-15.log. the gateway drops connections now and then and the charge is supposed to be retried. please fix so this stops killing the run",
+      "expected_output": "The agent reads the log and charge.py, sees that only TimeoutError is retried while the gateway raises GatewayError with transient=True for dropped connections, and retries GatewayError only when transient, reusing the idempotency key. Declines, insufficient funds and programming errors are not retried. A test reproduces the connection reset first.",
+      "files": ["files/billing"],
+      "assertions": [
+        {"text": "Transient gateway errors are retried with the same key; declines and other errors are not retried", "script": "checks/billing_retry_fixed.py"},
+        "A test or script reproducing the transient GatewayError was run and failed before charge.py was changed",
+        "The response says that non-transient gateway errors such as declines are deliberately still not retried"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "symptom-at-the-caller",
+      "prompt": "the monthly report is off. february EU shows 1700 but the feb rows in data/sales.csv only add up to 500 for EU. january looks fine. `python -m reports data/sales.csv`",
+      "expected_output": "The agent reproduces the wrong February totals, traces them to the mutable default argument in summarize() that accumulates across calls, fixes it in summarize so every caller (the CLI and the dashboard api) gets fresh totals, and adds a test that calls summarize twice. The response mentions that the dashboard caller was affected too.",
+      "files": ["files/reports"],
+      "assertions": [
+        {"text": "Each call starts from zero for both the CLI and the dashboard caller", "script": "checks/reports_fixed.py"},
+        "The response names the shared mutable default argument in summarize as the cause",
+        "The response says the dashboard caller (reports/api.py) was affected by the same bug"
+      ]
+    }
+  ]
+}

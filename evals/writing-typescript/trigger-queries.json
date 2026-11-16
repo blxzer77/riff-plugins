@@ -1,0 +1,122 @@
+[
+  {
+    "query": "add a `cancelled` status to the order type in src/components/OrderList.tsx and show it with a grey badge",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "src/lib/config.ts reads RATE_LIMIT_* env vars as any, turn that into a properly typed config",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "the fetch('/api/orders') result in OrderList.tsx is typed any, give it real types",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "turned on noUncheckedIndexedAccess and now src/lib/rateLimiter.ts has 'Object is possibly undefined' errors, fix them properly",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "linkOrder in src/lib/ids.ts takes userId and orderId as plain strings and people keep passing them in the wrong order. can the compiler catch that?",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "port packages/utils from JavaScript to TypeScript",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "set up eslint and prettier for this repo",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "configure tsconfig path aliases and the vite build for the monorepo",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "expired cards get a 500 on /checkout in server/routes/checkout.js, fix it",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "write tests for src/lib/rateLimiter.ts",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "design the REST endpoints for exporting orders",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "what's the difference between interface and type in TypeScript? just explain",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "the switch over order status in OrderList.tsx has a default that hides new statuses, make it safer",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "add an optional discountCode to the checkout request body type and make sure the JSON we get is actually that shape",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "we have `as any` all over src/lib, clean it up the right way",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "write a typed wrapper around localStorage for the React app",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "review the PR that changes src/components/OrderList.tsx",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "add cursor pagination to server/routes/orders.js",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "zod or valibot for our validation, which should we pick?",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "OrderList.tsx is slow with 10k rows, make it render faster",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  }
+]

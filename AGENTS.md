@@ -55,3 +55,25 @@ python3 -m unittest discover -s tests    # eval harness tests
 
 Eval runs write to `.workspace/` (git-ignored). Never commit workspaces or move them
 into a directory agents scan for skills.
+
+## What enforces each rule
+
+Nothing fails when a rule that lives only in prose is skipped, so each rule names
+its mechanism. "Review" means there is none yet: when such a rule is broken a second
+time, add a check instead of repeating the rule.
+
+| Rule | Enforced by |
+|---|---|
+| Spec-valid frontmatter; `name` equals the directory | `skills-ref` and `scripts/validate.py` (CI) |
+| Only the five allowed frontmatter fields; no vendor word in a skill name | `scripts/validate.py` |
+| Description: at most 300 characters, third person, "Use when" | `scripts/validate.py` |
+| Body under 500 lines; bundled files referenced; references do not link to each other | `scripts/validate.py` |
+| Every skill listed in the marketplace file | `scripts/validate.py` |
+| Evals and trigger queries exist, with at least three cases and set labels | `scripts/validate.py --strict` |
+| No `SKILL.md` outside `skills/`; no evals inside a skill | `scripts/validate.py` |
+| Skills install with the generic CLI; templates and evals do not | CI install smoke test |
+| The eval harness does not trust the agent's working directory | `tests/` (CI) |
+| Eval checks judge known good and bad outputs correctly | `tests/` for the checks that have them (CI); otherwise review |
+| No vendor-specific tools, variables, commands, or paths in skill bodies | review |
+| Upstream material rewritten and checked against primary sources | review |
+| Facts that age carry a date or a run-time check | review |

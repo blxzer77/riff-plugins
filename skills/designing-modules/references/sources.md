@@ -16,6 +16,8 @@ below. All pages were fetched on 2026-11-01.
 | Shopify Engineering, "Deconstructing the Monolith" and "Under Deconstruction" | Components with a public API and exclusive data ownership; violations as access outside the public API; change locality; decoupling alone can harden a bad split; static checks over runtime tracing |
 | Simon Brown, "Modular monolith" | Poorly built monoliths will not become good services; use language access control to enforce boundaries |
 | import-linter `2173911`, dependency-cruiser `96a1dd3`, ArchUnit `0aa50c0`, Packwerk `31e5342` | Contract types for protected internals, independence, acyclic siblings, forbidden and layered imports |
+| John Ousterhout, CS 190 lecture notes "Modular Design" (Stanford, Winter 2018; fetched 2026-11-16) | Deep and shallow classes; information leakage; temporal decomposition as a common cause of leakage; pass-through methods |
+| pstack `skills/architect/references/design-red-flags.md` and `principle-migrate-callers-then-delete-legacy-apis` (`cursor/plugins` `bf0c7cd`, MIT; read 2026-11-16) | Shapes that mislead a contributor who sees one file: split ownership, two ways to do one task, importable internals, hand-synced lists; move internal callers and delete the old interface in one change |
 
 URLs:
 
@@ -33,3 +35,5 @@ URLs:
 - https://github.com/sverweij/dependency-cruiser
 - https://github.com/TNG/ArchUnit
 - https://github.com/Shopify/packwerk
+- https://web.stanford.edu/~ouster/cgi-bin/cs190-winter18/lecture.php?topic=modularDesign
+- https://github.com/cursor/plugins/tree/main/pstack

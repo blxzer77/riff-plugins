@@ -18,10 +18,28 @@ agent.
 | [designing-modules](skills/designing-modules) | Set module boundaries proportional to project size |
 | [designing-apis](skills/designing-apis) | Design maintainable, evolvable API contracts |
 | [writing-tests](skills/writing-tests) | Write tests that catch regressions and repair flaky suites |
+| [debugging-failures](skills/debugging-failures) | Find and fix the root cause of a crash, wrong output, or bug report |
+| [writing-typescript](skills/writing-typescript) | Write TypeScript the type checker can hold to account |
+| [verifying-changes](skills/verifying-changes) | Prove a change works by running it the way it really runs |
+| [measuring-performance](skills/measuring-performance) | Measure before and after any speed or resource claim |
 | [writing-adrs](skills/writing-adrs) | Record significant decisions and their tradeoffs |
 | [reviewing-code](skills/reviewing-code) | Review diffs with evidence and false-positive control |
 | [reviewing-designs](skills/reviewing-designs) | Review architecture proposals against the actual project |
 | [building-llm-applications](skills/building-llm-applications) | Build reliable, evaluated, cost-bounded LLM features |
+
+### Close calls
+
+| If the request is | Use | Not |
+|---|---|---|
+| "Rewrite this skill" or "its description never fires, fix it" | authoring-skills | evaluating-skills, which measures whether a skill triggers or helps |
+| "Is this PR safe to merge?" | reviewing-code | reviewing-designs, which reviews proposals, ADRs, RFCs, and plans |
+| "Postgres or SQLite?" | selecting-technologies | writing-adrs, which records the decision once made; often both apply |
+| "Split billing out of orders" | designing-modules | designing-apis, which covers the contract with clients |
+| "Add tests for this module" | writing-tests | reviewing-code, which reviews a change and does not add tests |
+| "Checkout returns 500, fix it" | debugging-failures | writing-tests alone; it adds the regression test once the cause is known, and both often apply |
+| "This test fails randomly on CI" | writing-tests | debugging-failures, which is for failures with an unknown cause in the product code |
+| "Tests pass, but does it really work?" | verifying-changes | writing-tests, which adds lasting tests; verifying-changes runs the real thing once |
+| "The orders page got slow" | measuring-performance | debugging-failures, which is for wrong behavior rather than slow behavior |
 
 ## Install and update
 

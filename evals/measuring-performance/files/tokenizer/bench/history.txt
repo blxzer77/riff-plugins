@@ -1,0 +1,5 @@
+# perf CI, bench/bench_tokenize.py, one run per commit on a shared runner
+2026-11-12  7c41d0e  tokenize: 800000 tokens in 405 ms
+2026-11-13  91be2a4  tokenize: 800000 tokens in 398 ms
+2026-11-14  e03f9b1  tokenize: 800000 tokens in 412 ms
+2026-11-15  5d2a8c7  tokenize: 800000 tokens in 461 ms   <-- ALERT: +12% vs previous
