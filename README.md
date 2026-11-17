@@ -21,7 +21,10 @@ agent.
 | [debugging-failures](skills/debugging-failures) | Find and fix the root cause of a crash, wrong output, or bug report |
 | [writing-typescript](skills/writing-typescript) | Write TypeScript the type checker can hold to account |
 | [verifying-changes](skills/verifying-changes) | Prove a change works by running it the way it really runs |
+| [creating-verification-harnesses](skills/creating-verification-harnesses) | Give a project a verify skill any agent can follow, and keep it current |
+| [checking-invariants](skills/checking-invariants) | Check races, orderings and state machines across every case in a bound (TLA+, enumeration) |
 | [measuring-performance](skills/measuring-performance) | Measure before and after any speed or resource claim |
+| [fanning-out-work](skills/fanning-out-work) | Split checks across slices or race alternatives, and merge one report you can trust |
 | [writing-adrs](skills/writing-adrs) | Record significant decisions and their tradeoffs |
 | [reviewing-code](skills/reviewing-code) | Review diffs with evidence and false-positive control |
 | [reviewing-designs](skills/reviewing-designs) | Review architecture proposals against the actual project |
@@ -39,7 +42,10 @@ agent.
 | "Checkout returns 500, fix it" | debugging-failures | writing-tests alone; it adds the regression test once the cause is known, and both often apply |
 | "This test fails randomly on CI" | writing-tests | debugging-failures, which is for failures with an unknown cause in the product code |
 | "Tests pass, but does it really work?" | verifying-changes | writing-tests, which adds lasting tests; verifying-changes runs the real thing once |
+| "Give agents a standard way to launch and drive the app" | creating-verification-harnesses | verifying-changes, which checks one change; the harness is what it then follows |
 | "The orders page got slow" | measuring-performance | debugging-failures, which is for wrong behavior rather than slow behavior |
+| "Run every package's checks and give me one report" | fanning-out-work | writing-tests, which writes the tests those checks run |
+| "Can two workers ever run the same job?" | checking-invariants | reviewing-designs, which reviews a whole proposal against the project; both apply to a design |
 
 ## Install and update
 

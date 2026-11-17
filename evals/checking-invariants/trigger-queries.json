@@ -1,0 +1,122 @@
+[
+  {
+    "query": "can two workers ever process the same webhook in src/webhooks/send.go at once? we take a redis lock first but I'm not convinced",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "billing/sync.py retries on timeout. is there any way a retry double-charges if the first call actually went through?",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "the checkout state machine in server/routes/checkout.js: can an order ever end up paid and cancelled at the same time?",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "write a TLA+ model of our rate limiter's token refill and check it never lets more than the limit through",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "prove the dedupe in billing/services.py can't drop a message whatever order duplicates arrive in",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "our CI model check started failing after the last merge, figure out what's going on",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "write unit tests for billing/pdf.py",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "review my PR that changes the redis lock in send.go",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "checkout returns 500 for expired cards, fix it",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "draw an architecture diagram of the billing services",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "make GET /orders faster",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "add a --dry-run flag to the cli export",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "before we build it: can this leader election design ever end up with two leaders?",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "is it possible for the rate limiter to deadlock when two requests refill at the same moment?",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "model-check the order lifecycle so we know no sequence of events ships an unpaid order",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "fuzz every input to the duration parser and make sure format and parse round-trip",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "explain what a state machine is",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "set up CI with lint and test jobs",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "write an ADR for adopting redis",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "rename OrderList.tsx to Orders.tsx",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  }
+]

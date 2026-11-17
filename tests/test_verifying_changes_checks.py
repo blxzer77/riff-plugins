@@ -43,7 +43,7 @@ RETRY_ALL = RETRY.replace("            if e.code < 500 and e.code != 429 or atte
 
 
 class VerifyingChangesChecks(unittest.TestCase):
-    def run_check(self, fixture, check, edits=()):
+    def run_check(self, fixture, check, edits=(), rebuild=False):
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp) / fixture
             shutil.copytree(EVALS / "files" / fixture, work)
@@ -52,6 +52,8 @@ class VerifyingChangesChecks(unittest.TestCase):
                 text = path.read_text(encoding="utf-8")
                 assert old in text, (rel, old)
                 path.write_text(text.replace(old, new, 1), encoding="utf-8")
+            if rebuild:
+                subprocess.run([sys.executable, "build.py"], cwd=work, check=True, capture_output=True)
             r = subprocess.run([sys.executable, str(EVALS / "checks" / check)],
                                env={**os.environ, "EVAL_WORKDIR": str(work)},
                                capture_output=True, text=True, timeout=120)
@@ -79,6 +81,24 @@ class VerifyingChangesChecks(unittest.TestCase):
                                        [("reports/upload.py", original, RETRY)]))
         self.assertFalse(self.run_check("uploader", "upload_retries.py",
                                         [("reports/upload.py", original, RETRY_ALL)]))
+
+    def test_release_dry_run(self):
+        self.assertFalse(self.run_check("release-tool", "dry_run_no_side_effects.py"))
+        arg = ("scripts/publish.py", 'parser.add_argument("--notes", default="")',
+               'parser.add_argument("--notes", default="")\n    parser.add_argument("--dry-run", action="store_true")')
+        sloppy = [arg, ("scripts/publish.py", "    upload(ROOT / \"dist\", new)\n",
+                        "    if not args.dry_run:\n        upload(ROOT / \"dist\", new)\n")]
+        self.assertFalse(self.run_check("release-tool", "dry_run_no_side_effects.py", sloppy))
+        good = [arg, ("scripts/publish.py", "    meta[\"version\"] = new\n",
+                      "    if args.dry_run:\n        print(f\"would publish {meta['name']} {new}\")\n        return\n"
+                      "    meta[\"version\"] = new\n")]
+        self.assertTrue(self.run_check("release-tool", "dry_run_no_side_effects.py", good))
+
+    def test_greeter_entry_point(self):
+        self.assertFalse(self.run_check("greeter", "greet_entry_point.py"))
+        src_only = [("src/greeter/__init__.py", "Hello, {name}!", "Hello, {name.title()}!")]
+        self.assertFalse(self.run_check("greeter", "greet_entry_point.py", src_only))
+        self.assertTrue(self.run_check("greeter", "greet_entry_point.py", src_only, rebuild=True))
 
 
 if __name__ == "__main__":

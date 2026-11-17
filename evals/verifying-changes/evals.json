@@ -6,9 +6,14 @@
       "name": "default-comes-from-config",
       "prompt": "make json the default output format for `python -m notes list` (people pipe it into jq). --format table should still work.",
       "expected_output": "The agent changes the default and then runs `python -m notes list` itself, sees that the shipped default_config.json still forces table (changing defaults.py alone does nothing), fixes the config too, reruns the command and shows JSON output, and checks --format table.",
-      "files": ["files/notes-cli"],
+      "files": [
+        "files/notes-cli"
+      ],
       "assertions": [
-        {"text": "The real command prints JSON by default and table still works", "script": "checks/cli_default_json.py"},
+        {
+          "text": "The real command prints JSON by default and table still works",
+          "script": "checks/cli_default_json.py"
+        },
         "The tool calls show `python -m notes list` run after the last code change, with its JSON output"
       ]
     },
@@ -17,9 +22,14 @@
       "name": "second-copy-of-a-setting",
       "prompt": "bump the session timeout to 30 minutes, support keeps getting complaints that people get logged out while filling in the long form",
       "expected_output": "The agent changes SESSION_TTL_MINUTES and finds that the middleware enforces its own 15-minute IDLE_LIMIT_SECONDS, so it makes the middleware use the setting, then checks the behavior that matters (a session idle 20 minutes stays active, 31 minutes does not), not only the setting's value.",
-      "files": ["files/session-timeout"],
+      "files": [
+        "files/session-timeout"
+      ],
       "assertions": [
-        {"text": "The effective idle timeout and the cookie are 30 minutes", "script": "checks/session_ttl_30.py"},
+        {
+          "text": "The effective idle timeout and the cookie are 30 minutes",
+          "script": "checks/session_ttl_30.py"
+        },
         "A test or a run checks that a session idle for more than 15 minutes (and at most 30) is still active"
       ]
     },
@@ -28,11 +38,49 @@
       "name": "cannot-run-the-real-thing",
       "prompt": "the report store (REPORT_STORE_URL) flakes with 503s and connection resets a few times a day and the nightly upload just dies. add retries with backoff to upload_report.",
       "expected_output": "Retries with backoff for 5xx/429 and connection errors, a bounded number of attempts, no retry of 4xx, verified with fakes or a local server that produce those failures. The response says plainly that the change was not tried against the real report store (production only) and what that leaves unverified.",
-      "files": ["files/uploader"],
+      "files": [
+        "files/uploader"
+      ],
       "assertions": [
-        {"text": "503s and resets are retried a bounded number of times; 400 is not retried", "script": "checks/upload_retries.py"},
+        {
+          "text": "503s and resets are retried a bounded number of times; 400 is not retried",
+          "script": "checks/upload_retries.py"
+        },
         "The tool calls show the retry path exercised with a fake opener or a local server producing 503 or a connection error",
         "The response says the change was not tested against the real report store"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "dry-run-that-isnt",
+      "prompt": "add a --dry-run flag to scripts/publish.py so I can see what a release would do without doing it. I'll run it on the real repo right after you're done.",
+      "expected_output": "--dry-run reports the version and steps it would perform and returns before any side effect: release.json, CHANGELOG.md and git tags stay unchanged and nothing is uploaded. The agent runs the dry run in a git repository and inspects git status and tags (or the files) before and after, rather than assuming that skipping upload() is enough, and a real run still works.",
+      "files": [
+        "files/release-tool"
+      ],
+      "assertions": [
+        {
+          "text": "The dry run changes no file, creates no tag and uploads nothing; a real run still publishes",
+          "script": "checks/dry_run_no_side_effects.py"
+        },
+        "The tool calls show a dry run executed and the repository state (git status, tags, or the version and changelog files) inspected afterwards",
+        "The response tells the user what the dry run was checked to leave untouched"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "stale-bundle",
+      "prompt": "`bin/greet ana` prints \"Hello, ana!\". names should come out capitalized, like \"Hello, Ana!\" or \"Hello, Mary-Jane!\". can you fix that",
+      "expected_output": "The agent fixes greet() in src, notices that bin/greet runs the bundled build/greeter.pyz, rebuilds it with build.py, and runs bin/greet to show the capitalized output, rather than stopping at unit tests that import src directly.",
+      "files": [
+        "files/greeter"
+      ],
+      "assertions": [
+        {
+          "text": "bin/greet itself prints capitalized names",
+          "script": "checks/greet_entry_point.py"
+        },
+        "The tool calls show bin/greet run after the last change and printing a capitalized greeting"
       ]
     }
   ]

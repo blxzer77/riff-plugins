@@ -1,0 +1,122 @@
+[
+  {
+    "query": "set up something so any agent can start this app, click through checkout and show me proof it works",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "we have no way to verify changes end to end. write a runbook or skill agents can follow to launch the server and drive the API",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "our verify skill in .agents/skills/verify-shop broke after the router rewrite, agents keep failing with it. fix it",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "make a reusable script agents can run to boot the CLI with a temp database and exercise the main commands",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "create a project skill that drives the express app in server/ like a real user and saves evidence",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "the feature map in our verification skill is out of date, half the routes moved. update it",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "I changed the default page size, check it actually works end to end",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "write unit tests for billing/services.py",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "set up GitHub Actions to run the tests on every push",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "checkout returns 500 for expired cards, fix it",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "review my PR to server/routes/orders.js",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "make GET /orders faster",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "agents keep claiming the UI works without running it. give them a standard way to launch it and prove behavior",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "audit .agents/skills/verify-app against the current app and fix whatever drifted",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "write a harness agents can use to test the webhook sender against a local receiver, with logs as proof",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "how should agents check the billing CLI actually works? set that up in the repo",
+    "should_trigger": true,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "add a --dry-run flag to the cli export",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "write a k6 load test for /checkout",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "explain how the webhook sender retries",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "write an ADR for adopting playwright",
+    "should_trigger": false,
+    "set": "validation",
+    "fixture": "files/trigger-repo"
+  }
+]

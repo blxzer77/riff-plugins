@@ -10,6 +10,8 @@ __pycache__/
 
 # Generic agent install output
 .agents/
+# ...except inside eval fixtures, where a project-local skill is part of the fixture
+!evals/*/files/*/.agents/
 agent/
 
 # Agent runtime state

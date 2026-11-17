@@ -1,0 +1,22 @@
+diff --git a/calc/money.py b/calc/money.py
+index a6cde1a..55f97f6 100644
+--- a/calc/money.py
++++ b/calc/money.py
+@@ -3,4 +3,4 @@ def add(a, b):
+ 
+ 
+ def fmt(cents):
+-    return f"${cents / 100:.2f}"
++    return f"${cents / 100:,.2f}"
+diff --git a/tests/test_money.py b/tests/test_money.py
+index 5563f75..a00221a 100644
+--- a/tests/test_money.py
++++ b/tests/test_money.py
+@@ -10,6 +10,7 @@ class MoneyTest(unittest.TestCase):
+     def test_fmt(self):
+         self.assertEqual(fmt(1234), "$12.34")
+         self.assertEqual(fmt(5), "$0.05")
++        self.assertEqual(fmt(123456789), "$1,234,567.89")
+ 
+ 
+ if __name__ == "__main__":

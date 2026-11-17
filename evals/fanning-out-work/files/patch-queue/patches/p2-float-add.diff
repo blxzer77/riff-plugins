@@ -1,0 +1,23 @@
+diff --git a/calc/money.py b/calc/money.py
+index a6cde1a..a5affc0 100644
+--- a/calc/money.py
++++ b/calc/money.py
+@@ -1,5 +1,5 @@
+ def add(a, b):
+-    return a + b
++    return round(a) + round(b, 1)
+ 
+ 
+ def fmt(cents):
+diff --git a/tests/test_money.py b/tests/test_money.py
+index 5563f75..63d4d9e 100644
+--- a/tests/test_money.py
++++ b/tests/test_money.py
+@@ -6,6 +6,7 @@ from calc.money import add, fmt
+ class MoneyTest(unittest.TestCase):
+     def test_add(self):
+         self.assertEqual(add(2, 3), 5)
++        self.assertEqual(add(2.5, 0.25), 2.75)
+ 
+     def test_fmt(self):
+         self.assertEqual(fmt(1234), "$12.34")

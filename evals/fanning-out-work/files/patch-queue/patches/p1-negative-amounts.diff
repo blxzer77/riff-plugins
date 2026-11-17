@@ -1,0 +1,11 @@
+diff --git a/calc/money.py b/calc/money.py
+index a6cde1a..f22cfcf 100644
+--- a/calc/money.py
++++ b/calc/money.py
+@@ -3,4 +3,5 @@ def add(a, b):
+ 
+ 
+ def fmt(cents):
+-    return f"${cents / 100:.2f}"
++    sign = "-" if cents < 0 else ""
++    return f"{sign}${abs(cents) / 100:.2f}"

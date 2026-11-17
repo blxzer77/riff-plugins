@@ -1,0 +1,55 @@
+{
+  "skill_name": "creating-verification-harnesses",
+  "evals": [
+    {
+      "id": 1,
+      "name": "create-harness",
+      "prompt": "agents working on this repo keep saying their changes 'should work'. set up a way, in the repo, for any agent to start notesapp, use it like a real user would (API and CLI) and come back with proof.",
+      "expected_output": "A project-local skill (for example .agents/skills/verify-notesapp/SKILL.md with frontmatter) with exact Launch (throwaway data dir and free port, ready check), Doctor (health endpoint shows the right version and data dir), Drive (add and search through API and CLI, per feature), Evidence (outputs saved to a named folder that survives cleanup) and Cleanup (kill only the server it started) sections, plus a small feature map. The agent follows it once end to end before handing it over, never touching ./data, and leaves nothing running.",
+      "files": [
+        "files/notesapp"
+      ],
+      "assertions": [
+        {
+          "text": "The team's notes are untouched and no notesapp server from the run is left running",
+          "script": "checks/notes_left_clean.py"
+        },
+        "The repository now holds instructions (a project skill or document) with exact commands to launch notesapp on a throwaway data directory and port, check it is healthy, drive adding and searching through the API and the CLI, save evidence, and clean up",
+        "The tool calls show the agent followed those instructions end to end once (launch, health check, add and search, cleanup) and that the evidence still existed after cleanup"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "stale-harness",
+      "prompt": "agents keep failing when they follow .agents/skills/verify-notesapp. can you sort it out?",
+      "expected_output": "The agent runs the existing verify skill live, finds the drift from notesapp 2.0 (`add` is now `new`, /health is now /healthz), fixes only the skill and its feature map (not the product code), reruns the corrected steps against a live server on a throwaway data dir, and cleans up.",
+      "files": [
+        "files/notesapp-v2"
+      ],
+      "assertions": [
+        {
+          "text": "The skill matches notesapp 2.0, product code and real data are untouched, and nothing is left running",
+          "script": "checks/stale_harness_fixed.py"
+        },
+        "The tool calls show the corrected instructions run against a live notesapp after the edit (a health check and creating a note with the new command)"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "cli-harness",
+      "prompt": "set up a way, in this repo, for agents to check their changes to todocli by actually running it and showing proof.",
+      "expected_output": "A project-local verification skill for a short-lived CLI: each check runs with TODO_FILE pointing at a throwaway file (never ./todo.json), drives add, list and done, captures command, output and exit code as evidence, and needs no server. The agent runs it once before handing it over.",
+      "files": [
+        "files/todocli"
+      ],
+      "assertions": [
+        {
+          "text": "The team's todo.json is untouched",
+          "script": "checks/todo_untouched.py"
+        },
+        "The instructions run every check against a throwaway TODO_FILE, never ./todo.json, and do not invent a server or other long-running process for this CLI",
+        "The tool calls show the agent ran its own instructions once (add, list and done) and kept the output as evidence"
+      ]
+    }
+  ]
+}

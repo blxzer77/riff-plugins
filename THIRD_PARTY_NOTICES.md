@@ -31,8 +31,9 @@ Tan.
 
 Used as source material for practices in `writing-tests`, `designing-modules`,
 `reviewing-code`, `reviewing-designs`, and `authoring-skills`; for the new skills
-`debugging-failures`, `writing-typescript`, `verifying-changes`, and
-`measuring-performance`; and for the rule table in `AGENTS.md`. The
+`debugging-failures`, `writing-typescript`, `verifying-changes`,
+`measuring-performance`, `checking-invariants`, `fanning-out-work`, and
+`creating-verification-harnesses`; and for the rule table in `AGENTS.md`. The
 practices are rewritten in this repository's words and checked against a primary
 source where one exists; no upstream text is reproduced. The mapping from upstream
 files to skills, and what was left out and why, is in `sources/pstack.yaml`.

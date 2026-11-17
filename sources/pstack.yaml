@@ -53,12 +53,34 @@ adopted:
     - path: skills/principle-prove-it-works/SKILL.md
       practice: verify against the real artifact, not a proxy, self-report or "it compiles"
     - path: skills/poteto-mode/playbooks/bug-fix.md
-      practice: "inconclusive" or the wrong surface is not a pass
+      practice: an inconclusive result or a check on the wrong surface is not a pass
+    - path: skills/create-verification-skill/SKILL.md
+      practice: observe what a dry run skips; kill only what you started and keep the evidence; name what a stand-in did that the real target will not (commit 3fa33bb)
+    - path: skills/poteto-mode/playbooks/shipping.md
+      practice: an author's verdict does not count; a verdict covers one patch; read back after a merge (commit 3fa33bb)
   measuring-performance:
     - path: skills/benchmark-checklist/SKILL.md
       practice: write the claim first; check limits, errors, repeatability and that the work happened (checked against Gregg's active benchmarking)
     - path: skills/principle-explain-the-number/SKILL.md
       practice: name the limiter ("why not double?"); a gap smaller than the spread is no difference
+  checking-invariants:
+    - path: skills/create-formal-verification-skill/SKILL.md
+      practice: strongest target, let the question choose the tool, true to the code, able to fail, findings stay findings (commit 3fa33bb)
+    - path: skills/maintain-formal-verification-skill/SKILL.md
+      practice: record the sync commit; update from the code, not the result; drift versus bug (commit 3fa33bb)
+    - path: skills/statechart/SKILL.md
+      practice: remove a broken rule and rerun TLC; replay each bug path on the real code (commit 3fa33bb); the Mermaid renderer is not adopted
+      note: adopted 2026-11-17 once the Java and tla2tools.jar dependency was accepted; that dependency was the earlier reason to drop it
+  fanning-out-work:
+    - path: skills/swarm/SKILL.md
+      practice: frame the done predicate and shape, declare the race rule first, own copy per writing worker, standalone briefs with exact inputs, PASS / ISSUES / BLOCKED with every provable issue, one retry then a gap, gaps are not passes, one report (commit 3fa33bb)
+    - path: skills/arena/SKILL.md
+      practice: races repeat one brief; coverage is a partition, not a race (commit 3fa33bb)
+  creating-verification-harnesses:
+    - path: skills/create-verification-skill/SKILL.md
+      practice: interview the repo; Launch, Doctor, Drive, Evidence, Cleanup, Helpers; feature map; prove the generated skill once; evidence survives cleanup (commit 3fa33bb)
+    - path: skills/maintain-verification-skill/SKILL.md
+      practice: drive every feature live; drift, harness gap or product gap; edit only the skill folder (commit 3fa33bb)
   repository:
     - path: skills/correct/SKILL.md
       practice: a table in AGENTS.md pairing each rule with what enforces it
@@ -77,8 +99,6 @@ dropped:
     reason: conflicts with confirming sticky decisions first (selecting-technologies)
   - claim: redesign from first principles when a requirement arrives
     reason: pulls against the smallest change that solves the problem; only "update every reference" is kept
-  - claim: statechart and the formal-verification skills (TLA+, TLC, an external renderer)
-    reason: need a Java toolchain, network downloads, and an external service; not portable
   - claim: personal style rules (no em dashes, no mid-sentence colons, an AI word list)
     reason: preference without a primary source
   - claim: review should flag narrative comments, defensive code for impossible states, and dead compatibility paths

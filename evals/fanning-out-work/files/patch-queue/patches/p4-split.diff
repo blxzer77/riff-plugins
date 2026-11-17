@@ -1,0 +1,13 @@
+diff --git a/calc/money.py b/calc/money.py
+index a6cde1a..e859411 100644
+--- a/calc/money.py
++++ b/calc/money.py
+@@ -4,3 +4,8 @@ def add(a, b):
+ 
+ def fmt(cents):
+     return f"${cents / 100:.2f}"
++
++
++def split(cents, ways):
++    base, extra = divmod(cents, ways)
++    return [base + (1 if i < extra else 0) for i in range(ways)]

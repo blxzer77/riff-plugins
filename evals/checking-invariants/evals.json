@@ -1,0 +1,57 @@
+{
+  "skill_name": "checking-invariants",
+  "evals": [
+    {
+      "id": 1,
+      "name": "event-sequences",
+      "prompt": "orders/workflow.py applies order events. finance has two rules: we never refund more than the customer has paid, and an order only ships while the money we hold for it (paid minus refunded) covers its total. can you make sure the workflow can't break those, whatever order the events arrive in? a reorder after a refund (reopen, then pay again) has to keep working.",
+      "expected_output": "The agent states the two rules as invariants, explores event sequences systematically (a stateful property-based test, an enumeration of every sequence up to a depth, or a model checker) instead of a few hand-picked examples, finds the shallow violations (ship after a partial refund, refunds above the payment) and the deep one (reopen, pay again, ship with nothing held because pay overwrites paid), fixes the code so every sequence keeps both rules while the reorder flow works, and leaves that systematic check in the tests.",
+      "files": [
+        "files/orders-workflow"
+      ],
+      "assertions": [
+        {
+          "text": "No event sequence up to depth 6 breaks either rule, and the legitimate flows still work",
+          "script": "checks/workflow_invariants.py"
+        },
+        {
+          "text": "The project's tests fail when run against the original workflow.py",
+          "script": "checks/tests_catch_original.py"
+        },
+        "The tool calls show event sequences explored systematically (a stateful property-based test, an enumeration of all sequences up to a depth, or a model checker), not only hand-written examples"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "design-only-protocol",
+      "prompt": "docs/job-lease.md is the design for our job lease. we haven't built it yet. can it ever let two workers run the same job at the same time? I want a yes or no I can trust, with the reason.",
+      "expected_output": "Yes. The agent models the protocol (workers, the store's get/put as separate atomic steps, lease expiry) and explores the interleavings, for example with TLC. The shortest counterexample needs no pause: A and B both get nothing, A puts and reads back itself and starts, then B puts and reads back itself and starts. Pauses longer than the TTL and the non-atomic renew give further paths. The fix is a single conditional write (compare-and-set or put-if-absent, plus a check on renew) and fencing tokens for side effects, since a paused worker cannot be stopped in time.",
+      "files": [
+        "files/lease-design"
+      ],
+      "assertions": [
+        "The response answers that two workers can run the same job at the same time",
+        "The response gives a concrete step-by-step interleaving of store calls that ends with two workers running the job, and the steps are allowed by the design",
+        "The response proposes making the check and the write one atomic step (compare-and-set or put-if-absent) or adding fencing tokens",
+        "The tool calls show the interleavings explored mechanically (a model checker such as TLC, or a script that enumerates them), not only reasoned about"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "red-model-check",
+      "prompt": "CI's model check (scripts/check-model.sh) has been red since we merged the cancel button. can you get it green again? it's blocking the release.",
+      "expected_output": "The agent runs the model check, reads the counterexample (start, publish, cancel: the session ends cancelled with the file published), confirms the same sequence in the real Session code, and treats it as a bug in the code rather than in the model. It fixes cancel in session.py (refuse once publishing has started, or unpublish), updates the model to match the fixed code, keeps the CancelledIsUnpublished invariant word for word, and reruns the model check and the tests.",
+      "files": [
+        "files/upload-model"
+      ],
+      "assertions": [
+        {
+          "text": "The promise and the Cancel action are kept, TLC passes, and the code no longer leaves a cancelled upload published",
+          "script": "checks/model_kept_and_code_fixed.py"
+        },
+        "The response explains the counterexample as a real bug in the code (cancel during publishing leaves the file published), not as a modeling mistake",
+        "The tool calls show the model check run after the change and passing"
+      ]
+    }
+  ]
+}

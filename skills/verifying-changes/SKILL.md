@@ -3,7 +3,7 @@ name: verifying-changes
 description: "Proves a change works by running it the way it really runs. Use when implementing a feature, fix, default or config change and before saying it works, or when tests pass but the real behavior is unconfirmed. Not for writing test suites, reviewing someone else's diff, or debugging."
 license: Apache-2.0
 metadata:
-  verified-on: "2026-11-16"
+  verified-on: "2026-11-17"
 ---
 
 # Verifying changes
@@ -27,6 +27,9 @@ way it will actually run, and say plainly what you could not exercise.
 - [ ] **Make the change, then run the real entry point.** Run the command, call the
       function the way its callers do, hit the endpoint, render the page. Read the
       output; do not infer it. Run the existing tests too, but as a separate check.
+      Make sure what runs is what you changed: a bundle, a build directory, an
+      installed package, or a server that was already running can still hold the
+      old code. Rebuild, reinstall or restart the way the project does.
 - [ ] **Exercise the edges the request implies.** The old behavior still available
       when it should be (`--format table`), the limit on both sides (20 and 31
       minutes), the failure the change is for (a 503, a reset), and the failure it
@@ -37,13 +40,33 @@ way it will actually run, and say plainly what you could not exercise.
 - [ ] **Report with evidence.** For each claim, give the command and the relevant
       output. List what was not verified and why.
 
+## What counts as evidence
+
+- **Give each claim a verdict:** verified, not verified, or inconclusive.
+  Inconclusive is not a pass.
+- **Watch a safe mode work.** A `--dry-run`, test mode or `--check` flag proves
+  nothing by its name. Compare the files, git refs, stored data and network calls
+  before and after a run.
+- **Read back after acting.** After a merge, deploy, publish or migration, read the
+  resulting state. A command that reports success may only have queued the work.
+- **Name what a stand-in hides.** A fake, a local server or a container proves the
+  code against that stand-in. Under Not verified, list what the real target does
+  differently: authentication, limits, data, setup the stand-in did for you.
+- **A verdict covers the code it ran against.** After a fix round, a rebase or a
+  review edit, run the check again, scaled to what changed.
+- **Prefer a checker who did not write the change** when you can hand the
+  verification to another agent or person; an author checks what they meant to build.
+- **Leave the environment as you found it.** Stop only the processes you started,
+  and keep the evidence.
+
 ## Report
 
 ```text
 Changed: <files and what each change does>
-Verified: <command or call> -> <output that shows the requested behavior>
+Verified: <claim> -- <command or call> -> <output that shows it>
 Also checked: <edges, old behavior kept, tests run and their result>
-Not verified: <what could not run here (real service, other OS, production data)>
+Not verified: <claim, and why: real service, other OS, production data, stand-in gaps>
+Inconclusive: <claim, what was tried, what would settle it>
 ```
 
 If something you expected to see did not appear, say so first; do not report done.

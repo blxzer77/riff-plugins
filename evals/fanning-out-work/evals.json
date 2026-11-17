@@ -1,0 +1,53 @@
+{
+  "skill_name": "fanning-out-work",
+  "evals": [
+    {
+      "id": 1,
+      "name": "package-sweep",
+      "prompt": "run every package's check.sh under packages/ and give me one report I can act on before the release. don't change anything.",
+      "expected_output": "Every one of the six packages is checked (in parallel when the agent can, otherwise one by one) and appears in one consolidated report: auth, search and ledger pass; billing has two problems (rates/2026-11.csv bad header, rates/2026-12.csv negative rate), both listed; notify fails because check.sh exits 1 even though it prints OK; export could not be checked because xsv is not installed, reported as blocked rather than passed or failed. Nothing is changed.",
+      "files": [
+        "files/monorepo"
+      ],
+      "assertions": [
+        {
+          "text": "All six packages have the right verdict, both billing problems are named, and nothing changed",
+          "script": "checks/package_report.py"
+        },
+        "The report covers all six packages in one table or list, and says export could not be checked and why, rather than calling it passed or failed"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "patch-queue",
+      "prompt": "four patches are waiting in patches/. tell me which ones are safe to merge: each should apply to the current code and keep the tests green. leave the repo as it is.",
+      "expected_output": "Each patch is applied to its own clean copy of the current code and tested there: p1, p3 and p4 pass, p2 breaks test_add. Applied one after another in one tree, p3 would fail to apply on top of p1 and be misjudged; the report notes that p1 and p3 touch the same lines, so whichever lands second needs a rebase. The repository is left unchanged.",
+      "files": [
+        "files/patch-queue"
+      ],
+      "assertions": [
+        {
+          "text": "Each patch gets the right verdict (p3 passes on its own) and the working tree is unchanged",
+          "script": "checks/patch_report.py"
+        },
+        "The tool calls show each patch applied to its own clean copy (separate directories or worktrees, or a full reset to the original between patches) before its tests ran"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "slug-race",
+      "prompt": "three people each wrote a slugify() in candidates/. we keep one: it has to get every case in tests/cases.txt right, and of those we want the fastest. put the winner in slugify.py at the repo root and tell me how you picked.",
+      "expected_output": "The agent states the rule before measuring (all cases correct first, then fastest), runs every candidate against every case and times every candidate with the same method and repetitions, and reports a table: a is fastest but wrong on accented titles, b and c are correct, c is about nine times faster than b. c goes into slugify.py.",
+      "files": [
+        "files/slug-race"
+      ],
+      "assertions": [
+        {
+          "text": "slugify.py is correct on every case and much faster than the slow correct candidate",
+          "script": "checks/slug_pick.py"
+        },
+        "The response gives correctness and a timing for every candidate, measured the same way, and states the rule used to pick"
+      ]
+    }
+  ]
+}

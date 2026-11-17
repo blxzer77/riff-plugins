@@ -28,7 +28,7 @@ primary:
 dropped:
   - claim: required design-doc section checklist (context, drivers, security, verification, consequences)
     reason: reviews judged documents by missing sections; no source makes a missing section a finding
-  - claim: "Require at least one viable alternative" as a review rule
+  - claim: '"Require at least one viable alternative" as a review rule'
     reason: Google design-doc guidance describes alternatives as content, not a review gate
   - claim: confidence bands 50-79 / 90-100 mapped to severities
     reason: not in the cited reviewer agents; severity now follows the evidenced consequence

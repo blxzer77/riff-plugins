@@ -43,6 +43,9 @@ Skill 必须遵循 [Agent Skills specification](https://agentskills.io/specifica
 | `writing-typescript` | 外部数据先当 unknown 校验、联合类型穷尽检查、可空值、防参数串位 |
 | `verifying-changes` | 按真实运行方式验证改动，并如实列出未验证的部分 |
 | `measuring-performance` | 先测再改、找瓶颈、重复测量，单次告警不等于回归 |
+| `checking-invariants` | 用 TLA+/TLC 或穷举检查竞态、事件顺序、状态机；属性不削弱，反例回放到真实代码 |
+| `fanning-out-work` | 切片覆盖或多方案赛跑；每片 PASS/ISSUES/BLOCKED，缺口不算通过，汇总一份报告 |
+| `creating-verification-harnesses` | 给项目生成可复用的 verify skill（启动、自检、驱动、证据、清理），并维护它 |
 | `writing-adrs` | 主动识别重大决策并写 ADR |
 | `reviewing-code` | 正确性、测试、静默失败、安全、简化等代码审查 |
 | `reviewing-designs` | 架构、ADR、RFC、模块/API 方案审查 |
@@ -141,6 +144,13 @@ e519d0dd4d16be63b956fd35ab52fd6644840328
     `RIFF_SANDBOX_TYPESCRIPT_DIR`（typescript 包目录，挂到 `/tmp/riff-typescript`），
     都会加进沙箱 PATH；不设置时行为不变。评分时设置 `TSC` 指向同一个 tsc。
   - `tests/test_writing_typescript_checks.py` 需要 tsc（`TSC` 或 PATH），没有时跳过。
+  - nyan 包装脚本（2026-11-17 起）还支持 `RIFF_SANDBOX_TOOLS_DIR`（只读挂到 `/tmp/riff-tools`，并设置
+    `TLA2TOOLS` 指向其中的 `tla2tools*.jar`）。tla2tools.jar v1.7.4 放在 `~/.cache/riff-skills/tools/`。
+  - `tests/test_checking_invariants_checks.py` 的 TLC 部分需要 java 和 tla2tools.jar（`TLA2TOOLS`），没有时跳过。
+- 2026-11-17 本机模型代理连接错误超过半数，按用户要求改用 Claude Haiku 5.5 子代理评测：
+  每次运行一个新子代理、独立工作目录；带 skill 的运行先读 SKILL.md；判定断言由 Sonnet 子代理
+  在随机编号的副本上盲评；工具调用类断言依据子代理自己的命令清单和 diff。结果与 nyan/Pi 不可比，
+  见 `docs/EVALUATION_RESULTS.md`。
 - 仓库里的评测脚本本身不隔离文件系统。包装脚本缺失时先重建，不要裸跑 agent。
 - 2026-11-16 起，评测脚本不再信任 agent 工作目录里的任何内容：
   - 安装记录保存在内存里；

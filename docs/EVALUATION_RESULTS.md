@@ -19,6 +19,123 @@
 > 2026-11-16 a minimal probe succeeded again; probe before every batch, because the
 > local proxy still drops connections at times.
 
+## New skill `creating-verification-harnesses` (2026-11-17, Claude Haiku 5.5 subagents)
+
+From pstack's create- and maintain-verification-skill: build a project-local verify
+skill (Launch, Doctor, Drive, Evidence, Cleanup, a feature map), prove it once, and
+keep it current. Same method as the section below: fresh Haiku subagents per run,
+three runs per configuration, the with-skill run told to read `SKILL.md`, judged
+assertions graded blind by Sonnet subagents (`tests/test_creating_verification_harnesses_checks.py`
+covers the checks). Runs that start the notes server ran at most two at a time, and
+each run was graded for leftover servers as soon as it finished, so runs could not
+reuse each other's servers or ports.
+
+| Case | With skill | Without skill |
+|---|---:|---:|
+| create-harness (notes service; README's default data dir is the team's real notes) | 1.00 | 0.67 |
+| stale-harness (existing verify skill written for 1.x; app now uses `new` and `/healthz`) | 1.00 | 1.00 |
+| cli-harness (short-lived CLI; default data file is the team's real list) | 1.00 | 0.78 |
+| **Mean** | **1.00** | **0.81** |
+
+- No run in either configuration touched the real data or left a server running,
+  and every stale-harness run fixed only the skill and reran it live. Haiku already
+  isolates by default here.
+- With the skill, 3/3 wrote instructions that give the launch, health check,
+  driving, evidence and cleanup steps; without it, 0/3 did: each wrote a single
+  script that does all of that internally and documented only the command to run
+  it. That is a difference in form as much as in quality, since a self-contained
+  script is also usable by an agent; read the 0.67 with that in mind.
+- In the CLI case, 3/3 with the skill kept the run's output as an evidence file;
+  without it, 1/3 did (the others only printed it).
+- The stale-harness check first counted prose notes such as "`/health` returns 404
+  since 2.0" as stale commands; it now reads code blocks and command-like inline
+  code, skips migration notes, and has tests for both.
+
+Triggering, judged from descriptions by three Haiku subagents (all 17
+descriptions, the skill's 20 queries shuffled and unlabeled): 20/20 (train 6/6 and
+6/6, validation 4/4 and 4/4).
+
+## `checking-invariants`, `fanning-out-work`, and `verifying-changes` again (2026-11-17, Claude Haiku 5.5 subagents)
+
+From pstack's verification and swarm material: two new skills (`checking-invariants`
+for model checking and exhaustive exploration, `fanning-out-work` for slices and
+races) and an extended `verifying-changes` (what counts as evidence; make sure the
+thing you run is the thing you changed). Fixtures, checks and tests for the checks
+first (`tests/test_checking_invariants_checks.py`, `tests/test_fanning_out_work_checks.py`,
+new cases in `tests/test_verifying_changes_checks.py`).
+
+**Why not nyan.** The first nyan batch (verifying-changes, 30 runs) and the
+baselines for the two new skills hit the local model proxy's connection errors in
+more than half of the runs, mostly in runs longer than three minutes; retries and
+top-ups did not recover. At the user's request the comparisons were rerun with
+Claude Haiku 5.5 subagents. These numbers are not comparable with the nyan or Pi
+sections.
+
+Method, and how it differs from the harness:
+
+- Each run is a fresh Haiku subagent in its own copy of the fixture on nyan-pc, not
+  allowed to start subagents. The with-skill run is told to read the skill's
+  `SKILL.md` first; loading by description is not tested here.
+- Assertions about tool calls are judged from the agent's own command list and the
+  diff it left, not from a transcript.
+- Script assertions ran as usual. Judged assertions were graded by Sonnet 5.5
+  subagents on copies under random labels, without the configuration; responses
+  that follow the skill's report format can still hint at it.
+- Both configurations were told where `tla2tools.jar` is, which may nudge either
+  toward model checking.
+- Three runs per configuration for the new skills, two for `verifying-changes`.
+
+| Case | With skill | Without skill |
+|---|---:|---:|
+| invariants: event-sequences (order workflow; a 5-event path breaks a finance rule) | 0.89 | 0.67 |
+| invariants: design-only-protocol (can a lease design let two workers run a job?) | 1.00 | 1.00 |
+| invariants: red-model-check (TLC fails after a cancel button; fix the code, keep the property) | 1.00 | 1.00 |
+| **checking-invariants mean** | **0.96** | **0.89** |
+| fan-out: package-sweep (six check.sh; one prints OK and exits 1, one cannot run) | 1.00 | 0.50 |
+| fan-out: patch-queue (four patches; two touch the same lines) | 1.00 | 1.00 |
+| fan-out: slug-race (pick the fastest correct of three) | 0.83 | 0.67 |
+| **fanning-out-work mean** | **0.94** | **0.72** |
+| verifying-changes, all five cases | 1.00 | 1.00 |
+
+- `checking-invariants`: the difference is in the fix, not the analysis. With the
+  skill, 2 of 3 runs left no event sequence up to depth 6 that breaks a rule while
+  keeping the reorder flow; without it, 0 of 3. Both configurations explored
+  sequences systematically, found the lease race (several with TLC), and kept the
+  invariant in the red model check instead of weakening it.
+- `fanning-out-work`: with the skill, 3/3 reported the uncheckable package as
+  blocked rather than failed (1/3 without), and 2/3 timed every candidate the same
+  way before picking (1/3 without). Every run judged each patch on a clean copy.
+- `verifying-changes`: Haiku already does what the new body asks: it rebuilt the
+  bundle and ran `bin/greet`, inspected git state after the dry run, and said the
+  real report store was untested, with or without the skill. The extension is kept
+  on the strength of the earlier deepseek-flash gaps, but it shows no effect on
+  Haiku. The interrupted nyan iteration 3 is not used: too many runs are missing,
+  and its `stale-bundle` check had a defect (below).
+- Defects found in the new checks while grading, fixed before the numbers above:
+  the `stale-bundle` check demanded `O'Neil` for `o'neil`, which the prompt never
+  asked for; the fan-out report parser read a verdict from summary sentences
+  ("3 pass (auth, ...), 2 fail") and from words like "clean" before reading table
+  rows, and missed "not safe"; the unchanged-tree check missed added files. Each
+  fix has a test.
+
+Triggering, judged from descriptions by three Haiku subagents (all 16 skill
+descriptions, 40 shuffled unlabeled queries; a query counts as triggered when at
+least two of three judges load the owner):
+
+| Skill / description | Train pos | Train neg | Validation pos | Validation neg | Total |
+|---|---:|---:|---:|---:|---:|
+| checking-invariants, first | 5/6 | 6/6 | 3/4 | 4/4 | 18/20 |
+| checking-invariants, adopted ("or a model check fails") | 6/6 | 6/6 | 3/4 | 4/4 | 19/20 |
+| fanning-out-work | 6/6 | 6/6 | 3/4 | 4/4 | 19/20 |
+
+The remaining misses go to neighbours that also fit: "fuzz the duration parser"
+to writing-tests, and "compare two rate limiter implementations" to
+measuring-performance. This is a judgment from descriptions, not an agent run with
+installed skills.
+
+Runs, blind copies and grades: the session scratch folder (`haiku/`, `blind/`,
+`grades/`, `trigger-judge/`); not kept in the repository.
+
 ## New skill `verifying-changes` (2026-11-16, `nyan` + `deepseek-flash`)
 
 Built evals first like the other new skills (`tests/test_verifying_changes_checks.py`;

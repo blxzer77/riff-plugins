@@ -283,6 +283,18 @@ def check_marketplace(names: set[str], rep: Report) -> None:
         rep.error("marketplace.json", f"skill not listed: {missing}")
 
 
+def check_sources(rep: Report) -> None:
+    """Curation maps under sources/ must parse, so tools and readers can rely on them."""
+    for path in sorted((REPO / "sources").glob("*.yaml")):
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except yaml.YAMLError as exc:
+            rep.error(f"sources/{path.name}", f"not valid YAML: {exc}")
+            continue
+        if not isinstance(data, dict):
+            rep.error(f"sources/{path.name}", "must be a mapping")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("paths", nargs="*", type=Path, help="skill directories (default: all under skills/)")
@@ -298,6 +310,7 @@ def main() -> int:
     if not args.paths:
         check_distribution(rep)
         check_marketplace(names, rep)
+        check_sources(rep)
 
     for w in rep.warnings:
         print(f"warning: {w}")
