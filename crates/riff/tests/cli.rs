@@ -103,7 +103,8 @@ fn riff(home: &Path, cwd: &Path, args: &[&str]) -> Output {
         .args(args)
         .current_dir(cwd)
         .env("RIFF_HOME", home)
-        .env_remove("RIFF_SESSION");
+        .env_remove("RIFF_SESSION")
+        .env_remove("CODEX_SESSION_ID");
     for name in [
         "https_proxy",
         "HTTPS_PROXY",
@@ -260,6 +261,8 @@ fn concurrent_processes_in_one_session_never_overspend() {
                 .args(["web", "search", "q", "--session", "c"])
                 .current_dir(&home)
                 .env("RIFF_HOME", &home)
+                .env_remove("RIFF_SESSION")
+                .env_remove("CODEX_SESSION_ID")
                 .env_remove("https_proxy")
                 .env_remove("HTTPS_PROXY")
                 .env_remove("http_proxy")

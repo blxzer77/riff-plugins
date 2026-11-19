@@ -27,6 +27,10 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 /// share a budget.
 pub const CWD_WINDOW: Duration = Duration::from_secs(6 * 60 * 60);
 
+/// Session ids hosts export to every shell command they run. Codex sets
+/// `CODEX_SESSION_ID` (codex-rs/core/src/exec_env.rs, rust-v0.170.0).
+pub const HOST_SESSION_VARS: [&str; 1] = ["CODEX_SESSION_ID"];
+
 /// Session files untouched for this long are deleted on the next store.
 const SESSION_RETENTION: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
@@ -43,13 +47,22 @@ fn sessions_dir() -> PathBuf {
 pub struct SessionId(String);
 
 impl SessionId {
-    /// `--session`, then `RIFF_SESSION`, then the cwd window.
+    /// `--session`, then `RIFF_SESSION`, then a session id the host puts in
+    /// every shell command's environment ([`HOST_SESSION_VARS`]), then the
+    /// cwd window. The same raw id reaches the same session whichever way it
+    /// arrives (a hook-suggested `--session`, an exported variable).
     pub fn resolve(explicit: Option<&str>, cwd: &Path, now: SystemTime) -> Self {
+        let from_env = |name: &str| {
+            std::env::var(name)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        };
         let named = explicit
-            .map(str::to_string)
-            .or_else(|| std::env::var("RIFF_SESSION").ok())
             .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
+            .filter(|value| !value.is_empty())
+            .or_else(|| from_env("RIFF_SESSION"))
+            .or_else(|| HOST_SESSION_VARS.iter().find_map(|name| from_env(name)));
         match named {
             Some(name) => Self(format!("s-{}", short_hash(name.as_bytes()))),
             None => Self::cwd_window(cwd, now),
@@ -393,6 +406,36 @@ mod tests {
         assert_eq!(w, SessionId::cwd_window(cwd, t0 + Duration::from_secs(60)));
         assert_ne!(w, SessionId::cwd_window(cwd, t0 + CWD_WINDOW));
         assert_ne!(w, SessionId::cwd_window(Path::new("/tmp"), t0));
+    }
+
+    #[test]
+    fn a_host_session_variable_names_the_same_session_as_the_flag() {
+        use crate::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let cwd = Path::new("/");
+        let now = SystemTime::now();
+        let _riff = EnvVarGuard::unset("RIFF_SESSION");
+        let _codex = EnvVarGuard::unset("CODEX_SESSION_ID");
+        let window = SessionId::resolve(None, cwd, now);
+        assert!(window.as_str().starts_with("cwd-"));
+        {
+            let _codex = EnvVarGuard::set("CODEX_SESSION_ID", "019a-thread");
+            assert_eq!(
+                SessionId::resolve(None, cwd, now),
+                SessionId::resolve(Some("019a-thread"), cwd, now)
+            );
+            // RIFF_SESSION and the flag outrank the host's variable.
+            let _riff = EnvVarGuard::set("RIFF_SESSION", "mine");
+            assert_eq!(
+                SessionId::resolve(None, cwd, now),
+                SessionId::resolve(Some("mine"), cwd, now)
+            );
+            assert_eq!(
+                SessionId::resolve(Some("flag"), cwd, now),
+                SessionId::resolve(Some("flag"), Path::new("/tmp"), now)
+            );
+        }
+        assert_eq!(SessionId::resolve(None, cwd, now), window);
     }
 
     #[test]

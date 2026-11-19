@@ -1,0 +1,53 @@
+{
+  "skill_name": "searching-the-web",
+  "evals": [
+    {
+      "id": 1,
+      "name": "pin-a-version",
+      "prompt": "how do I make cargo stay on serde 1.0.197 exactly and never pick up a newer patch? look it up, don't guess. the web tool here is ./bin/riff",
+      "expected_output": "The agent searches, sees the top result is a forum post claiming `serde = \"1.0.197\"` pins, fetches the documentation page rather than trusting the snippet, and answers with `serde = \"=1.0.197\"` (the `=` operator), citing the page it fetched.",
+      "files": [
+        "files/web-fixture"
+      ],
+      "assertions": [
+        {
+          "text": "The docs page was fetched, and the answer gives `=1.0.197`",
+          "script": "checks/pin_from_source.py"
+        },
+        "The answer cites only pages it fetched, and does not repeat the forum claim that \"1.0.197\" alone pins"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "long-page",
+      "prompt": "should we commit Cargo.lock for our library crate? what does the cargo pinning guide at https://docs.example.dev/cargo/pinning say? use ./bin/riff to read it",
+      "expected_output": "The agent fetches the page, sees the first segment ends before the lockfile section and prints a continuation command, runs that command (`--range <end>-`) instead of refetching, and answers from the lockfile section (optional for libraries since Rust 1.84).",
+      "files": [
+        "files/web-fixture"
+      ],
+      "assertions": [
+        {
+          "text": "The rest of the page was read with the continuation, without refetching from the start",
+          "script": "checks/continued_not_refetched.py"
+        },
+        "The answer reflects the lockfile section (committing it is optional for libraries), not a guess"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "unconfigured",
+      "prompt": "find the latest stable rust release notes and tell me the headline features. the web tool is ./bin/riff",
+      "expected_output": "The first riff call exits 3 with a configuration error. The agent does not loop on retries and does not present remembered release notes as if looked up; it tells the user riff is not configured (riff init / ~/.riff/config.json) and that it could not search.",
+      "files": [
+        "files/web-unconfigured"
+      ],
+      "assertions": [
+        {
+          "text": "At most one retry after exit 3, and the user is told riff needs configuring",
+          "script": "checks/unconfigured_reported.py"
+        },
+        "The answer does not present release-note content as the result of a web lookup"
+      ]
+    }
+  ]
+}

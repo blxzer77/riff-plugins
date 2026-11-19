@@ -322,11 +322,15 @@ fn allow(agent: Agent, note: Option<&str>) -> Option<Value> {
 
 pub const HELP: &str = "\
 Usage: riff hook pretooluse --agent <claude-code|antigravity>
+       riff hook sessionstart --agent claude-code
 
-Reads the host's PreToolUse hook input on stdin and, for a call to the host's
-built-in web search or fetch, answers with a denial that names the equivalent
-`riff web` command. Other tools, and web calls riff cannot serve right now,
-are let through. Set web.interceptBuiltin to false to turn it off.
+pretooluse reads the host's PreToolUse hook input on stdin and, for a call to
+the host's built-in web search or fetch, answers with a denial that names the
+equivalent `riff web` command. Other tools, and web calls riff cannot serve
+right now, are let through. Set web.interceptBuiltin to false to turn it off.
+
+sessionstart exports the session id to later shell commands (via
+CLAUDE_ENV_FILE) and, after /clear, resets the session's budgets.
 ";
 
 /// `riff hook …`: `args` are the words after `hook`. Never blocks the host's
@@ -353,23 +357,73 @@ pub fn run(args: &[String]) -> i32 {
             }
         }
     }
-    let (Some(agent), Some("pretooluse")) = (agent, event.as_deref()) else {
-        eprintln!("riff hook: expected `pretooluse --agent <claude-code|antigravity>`\n\n{HELP}");
+    let (Some(agent), Some(event @ ("pretooluse" | "sessionstart"))) = (agent, event.as_deref())
+    else {
+        eprintln!(
+            "riff hook: expected `pretooluse|sessionstart --agent <claude-code|antigravity>`\n\n{HELP}"
+        );
         return super::web::exit::USAGE;
     };
     let mut raw = String::new();
-    if std::io::stdin().read_to_string(&mut raw).is_err() {
-        eprintln!("riff hook: cannot read stdin; letting the tool call through");
-        return emit(allow(agent, None));
-    }
-    let input = match serde_json::from_str::<Value>(&raw) {
+    let input = match std::io::stdin().read_to_string(&mut raw) {
+        Ok(_) => serde_json::from_str::<Value>(&raw).map_err(|error| error.to_string()),
+        Err(error) => Err(error.to_string()),
+    };
+    let input = match input {
         Ok(input) => input,
         Err(error) => {
-            eprintln!("riff hook: invalid hook input ({error}); letting the tool call through");
-            return emit(allow(agent, None));
+            eprintln!("riff hook: invalid hook input ({error}); doing nothing");
+            return match event {
+                "pretooluse" => emit(allow(agent, None)),
+                _ => 0,
+            };
         }
     };
-    emit(pretooluse(agent, &input))
+    match event {
+        "pretooluse" => emit(pretooluse(agent, &input)),
+        _ => {
+            let env_file = std::env::var_os("CLAUDE_ENV_FILE").map(std::path::PathBuf::from);
+            if let Err(error) = sessionstart(agent, &input, env_file.as_deref()) {
+                eprintln!("riff hook: {error}");
+            }
+            0
+        }
+    }
+}
+
+/// `sessionstart` (Claude Code): makes the session id reach every later
+/// `riff` call by appending `export RIFF_SESSION=<id>` to the file the host
+/// sources before each shell command (`CLAUDE_ENV_FILE`). After `/clear`
+/// (`source: "clear"`) the session's budgets start over, as nyan's `/clear`
+/// did. Prints nothing: the hook adds no context.
+pub fn sessionstart(
+    agent: Agent,
+    input: &Value,
+    env_file: Option<&std::path::Path>,
+) -> std::io::Result<()> {
+    let Some(session) = session_id(agent, input) else {
+        return Ok(());
+    };
+    if input.get("source").and_then(Value::as_str) == Some("clear") {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let id =
+            crate::state::SessionId::resolve(Some(&session), &cwd, std::time::SystemTime::now());
+        crate::state::Session::load(id)?.reset()?;
+    }
+    let Some(path) = env_file else {
+        return Ok(());
+    };
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(path)?;
+    // The id comes from the host; quote it so the sourced line cannot run anything.
+    writeln!(
+        file,
+        "export RIFF_SESSION={}",
+        crate::runtime::shell_quote(&session)
+    )
 }
 
 fn emit(output: Option<Value>) -> i32 {
@@ -390,6 +444,50 @@ mod tests {
 
     fn ag(tool: &str, args: Value) -> Value {
         json!({"conversationId": "conv-1", "toolCall": {"name": tool, "args": args}, "stepIdx": 3})
+    }
+
+    #[test]
+    fn sessionstart_exports_a_quoted_session_id_and_clear_resets_the_budget() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let home = TempHome::new("hook-sessionstart");
+        let env_file = home.path.join("claude-env.sh");
+        let hostile = "x'; touch pwned; '";
+        let input = json!({"session_id": hostile, "source": "startup"});
+        sessionstart(Agent::ClaudeCode, &input, Some(&env_file)).unwrap();
+        let line = std::fs::read_to_string(&env_file).unwrap();
+        assert_eq!(
+            line,
+            format!(
+                "export RIFF_SESSION={}\n",
+                crate::runtime::shell_quote(hostile)
+            )
+        );
+        // Sourcing it sets the variable to the raw id and runs nothing else.
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                ". '{}' && printf %s \"$RIFF_SESSION\"",
+                env_file.display()
+            ))
+            .current_dir(&home.path)
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout), hostile);
+        assert!(!home.path.join("pwned").exists());
+
+        // `source: clear` empties the session's counters.
+        let id = crate::state::SessionId::resolve(
+            Some(hostile),
+            std::path::Path::new("/"),
+            std::time::SystemTime::now(),
+        );
+        let mut state = crate::state::SessionState::default();
+        state.budget.search_calls = 7;
+        crate::state::write_session_for_tests(&id, &state);
+        let clear = json!({"session_id": hostile, "source": "clear"});
+        sessionstart(Agent::ClaudeCode, &clear, None).unwrap();
+        assert_eq!(crate::state::peek(&id).session.budget.search_calls, 0);
+        crate::web::reset_session();
     }
 
     #[test]

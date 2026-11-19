@@ -185,6 +185,11 @@ mod tests {
 
     #[test]
     fn riff_home_paths_expand() {
+        // The override is process-global; every test that reads riff_home()
+        // must not see this one's value.
+        let _lock = crate::test_env::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_home_override(Some(PathBuf::from("/tmp/riff-home-test")));
         assert_eq!(
             expand_path("$RIFF_HOME/keys/exa"),

@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""Stand-in `riff` for evals: canned search results and pages, no network.
+
+Every call is appended to riff-calls.log in the working directory (one JSON
+array of arguments per line) so checks can see what the agent ran. Output
+shapes and exit codes follow the real `riff web` (see docs/design.md 4.2).
+
+Scenario is chosen by the RIFF_FIXTURE file in the working directory:
+  ok           search and fetch work; the pin page is 2 segments long
+  unconfigured every web command exits 3 (no configuration)
+"""
+
+import json
+import os
+import shlex
+import sys
+
+HERE = os.getcwd()
+ARGS = sys.argv[1:]
+with open(os.path.join(HERE, "riff-calls.log"), "a", encoding="utf-8") as log:
+    log.write(json.dumps(ARGS) + "\n")
+
+scenario = "ok"
+try:
+    scenario = open(os.path.join(HERE, "RIFF_FIXTURE"), encoding="utf-8").read().strip() or "ok"
+except OSError:
+    pass
+
+if ARGS[:1] != ["web"]:
+    print("Usage: riff web <search|fetch|reset|doctor> ...", file=sys.stderr)
+    sys.exit(2)
+
+if scenario == "unconfigured":
+    print("riff web: no configuration at ~/.riff/config.json (run `riff init`)", file=sys.stderr)
+    sys.exit(3)
+
+PIN_URL = "https://docs.example.dev/cargo/pinning"
+PIN_TEXT = (
+    "# Pinning dependency versions\n\n"
+    "Cargo resolves `serde = \"1.0\"` to the newest compatible 1.x release.\n\n"
+    "## Exact versions\n\n"
+    "To pin an exact version write `serde = \"=1.0.197\"`. The `=` operator is the only\n"
+    "requirement that refuses newer patch releases.\n\n"
+)
+PIN_TAIL = (
+    "## Lockfiles\n\n"
+    "`Cargo.lock` records the resolved versions. Commit it for binaries; for libraries\n"
+    "it is optional since Rust 1.84 changed the guidance. Run `cargo update -p serde\n"
+    "--precise 1.0.197` to move the lockfile to one version without editing Cargo.toml.\n"
+)
+PAGES = {
+    PIN_URL: PIN_TEXT + PIN_TAIL,
+    "https://forum.example.org/t/pin-serde": (
+        "# How do I stop cargo upgrading serde?\n\nJust use `serde = \"1.0.197\"`, that pins it.\n"
+    ),
+}
+
+command = ARGS[1:2]
+rest = ARGS[2:]
+
+
+def option(name):
+    for index, word in enumerate(rest):
+        if word == name and index + 1 < len(rest):
+            return rest[index + 1]
+        if word.startswith(name + "="):
+            return word.split("=", 1)[1]
+    return None
+
+
+if command == ["search"]:
+    print("1. **How do I stop cargo upgrading serde?**")
+    print("   https://forum.example.org/t/pin-serde")
+    print("   sources: brave, exa")
+    print('   Just use serde = "1.0.197", that pins it.')
+    print()
+    print("2. **Pinning dependency versions - Cargo docs**")
+    print(f"   {PIN_URL}")
+    print("   sources: brave, deepseek, exa, tavily")
+    print("   Cargo resolves version requirements to the newest compatible release...")
+    print()
+    print("[searched: brave, deepseek, exa, tavily]")
+    print("[Search results are leads, not sources. Fetch a page before citing it.]")
+    sys.exit(0)
+
+if command == ["fetch"]:
+    url = next((word for word in rest if word.startswith("http")), None)
+    if url not in PAGES:
+        print(f"riff web: fetch_failed: riff http_404", file=sys.stderr)
+        sys.exit(5)
+    text = PAGES[url]
+    total = len(text)
+    first_end = len(PIN_TEXT) if url == PIN_URL else total
+    spec = (option("--range") or "").removeprefix("chars:")
+    start = int(spec.split("-")[0]) if spec[:1].isdigit() else 0
+    end = total if start > 0 else first_end
+    body = text[start:end]
+    print(f"{url}  (fetched 2026-11-19T08:00:00+00:00 by riff; status 200; text/html; {'continuation' if start else 'fresh'})")
+    print(f"[chars {start}–{end} of {total}]\n")
+    print(f'<web_content source="{url}">\n{body}\n</web_content>\n')
+    if end < total:
+        print(f"[next segment: riff web fetch {shlex.quote(url)} --range {end}-]")
+    else:
+        print("[end of page]")
+    sys.exit(0)
+
+print(f"riff web: unknown command {command}", file=sys.stderr)
+sys.exit(2)

@@ -1,0 +1,22 @@
+[
+  {"query": "what changed in the latest tokio release? check the release notes online", "should_trigger": true, "set": "train"},
+  {"query": "look up how the node 24 permission model works, I want the current docs not your memory", "should_trigger": true, "set": "train"},
+  {"query": "read https://docs.example.dev/cargo/pinning and tell me what it says about lockfiles", "should_trigger": true, "set": "train"},
+  {"query": "is there a known CVE for openssl 3.4.1? search for it", "should_trigger": true, "set": "train"},
+  {"query": "find the current pricing for the github actions larger runners", "should_trigger": true, "set": "train"},
+  {"query": "this error message from vite, google it and see what people say: Failed to resolve import virtual:pwa-register", "should_trigger": true, "set": "validation"},
+  {"query": "get me the official migration guide for react router v7 and summarize the breaking changes", "should_trigger": true, "set": "validation"},
+  {"query": "which python versions does django 5.2 support? verify against the django site", "should_trigger": true, "set": "validation"},
+  {"query": "search for benchmarks comparing sqlite wal mode and rollback journal", "should_trigger": true, "set": "validation"},
+  {"query": "pull up the rfc for http 103 early hints and quote what it says about caching", "should_trigger": true, "set": "train"},
+  {"query": "explain how rust's borrow checker handles two-phase borrows", "should_trigger": false, "set": "train"},
+  {"query": "find where we call the payments api in this repo", "should_trigger": false, "set": "train"},
+  {"query": "add a --json flag to our cli's list command", "should_trigger": false, "set": "train"},
+  {"query": "read src/config.ts and tell me what the defaults are", "should_trigger": false, "set": "train"},
+  {"query": "write a fetch() wrapper in typescript that retries on 503", "should_trigger": false, "set": "train"},
+  {"query": "our server's /search endpoint returns 500 for empty queries, fix it", "should_trigger": false, "set": "validation"},
+  {"query": "review this diff for security problems", "should_trigger": false, "set": "validation"},
+  {"query": "grep the logs for the request id 7f3a and show the stack trace", "should_trigger": false, "set": "validation"},
+  {"query": "summarize the README in this repository", "should_trigger": false, "set": "validation"},
+  {"query": "choose between postgres and sqlite for this side project", "should_trigger": false, "set": "train"}
+]
