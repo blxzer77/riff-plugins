@@ -20,9 +20,9 @@
 
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::DecisionPoint;
 
@@ -44,7 +44,8 @@ impl Kind {
     }
 }
 
-struct Candidate {
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Candidate {
     key: String,
     label: String,
     used: bool,
@@ -54,8 +55,56 @@ struct Probe {
     id: String,
     point: DecisionPoint,
     kind: Kind,
-    created: Instant,
+    /// Unix seconds: probes outlive the process (`crate::state`).
+    created: u64,
     candidates: Vec<Candidate>,
+}
+
+/// A pending probe as stored in the session file. Only URL probes exist.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersistedProbe {
+    id: String,
+    point: String,
+    created: u64,
+    candidates: Vec<Candidate>,
+}
+
+fn is_live(created: u64, now: u64) -> bool {
+    now.saturating_sub(created) < PROBE_TTL.as_secs()
+}
+
+pub fn persist() -> Vec<PersistedProbe> {
+    let now = crate::state::unix_now();
+    lock()
+        .iter()
+        .filter(|probe| is_live(probe.created, now))
+        .map(|probe| PersistedProbe {
+            id: probe.id.clone(),
+            point: probe.point.as_str().to_string(),
+            created: probe.created,
+            candidates: probe.candidates.clone(),
+        })
+        .collect()
+}
+
+/// Replaces the pending probes with the session's. Unknown points (a file
+/// written by another riff version) are dropped.
+pub fn restore(persisted: &[PersistedProbe]) {
+    let now = crate::state::unix_now();
+    *lock() = persisted
+        .iter()
+        .filter(|probe| is_live(probe.created, now))
+        .filter_map(|probe| {
+            Some(Probe {
+                id: probe.id.clone(),
+                point: DecisionPoint::from_str(&probe.point)?,
+                kind: Kind::Url,
+                created: probe.created,
+                candidates: probe.candidates.clone(),
+            })
+        })
+        .collect();
 }
 
 fn probes() -> &'static Mutex<Vec<Probe>> {
@@ -127,10 +176,10 @@ where
 
     let candidate_count = candidates.len();
     let id = uuid::Uuid::new_v4().simple().to_string();
-    let now = Instant::now();
+    let now = crate::state::unix_now();
     {
         let mut pending = lock();
-        pending.retain(|probe| now.duration_since(probe.created) < PROBE_TTL);
+        pending.retain(|probe| is_live(probe.created, now));
         while pending.len() >= MAX_PROBES {
             pending.remove(0);
         }
@@ -163,11 +212,11 @@ fn observe(kind: Kind, key: String) {
     if key.is_empty() {
         return;
     }
-    let now = Instant::now();
+    let now = crate::state::unix_now();
     let mut records = Vec::new();
     {
         let mut pending = lock();
-        pending.retain(|probe| now.duration_since(probe.created) < PROBE_TTL);
+        pending.retain(|probe| is_live(probe.created, now));
         for probe in pending.iter_mut() {
             if probe.kind != kind {
                 continue;
@@ -311,9 +360,7 @@ mod tests {
                 id: "expired".to_string(),
                 point: DecisionPoint::WebAnswers,
                 kind: Kind::Url,
-                created: Instant::now()
-                    .checked_sub(PROBE_TTL)
-                    .expect("instant supports subtracting the TTL"),
+                created: crate::state::unix_now() - PROBE_TTL.as_secs(),
                 candidates: vec![Candidate {
                     key: normalize_url(url),
                     label: url.to_string(),

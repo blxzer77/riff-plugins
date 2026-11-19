@@ -1,11 +1,13 @@
-//! the one decision-provider JSONL log (decision-provider §7).
+//! The one decision-provider JSONL log (decision-provider §7).
 //!
 //! Every point appends one JSON object per decision to
 //! `$RIFF_HOME/decision/decisions.jsonl`. Records are self-describing:
 //! each carries `point`, `outcome` and, where applicable, `mode` and latency,
-//! so `/decision` can aggregate them without knowing point-specific payloads.
+//! plus the calling `agent` and `session` (design 5), so the log can be
+//! aggregated without knowing point-specific payloads.
 
 use std::path::PathBuf;
+use std::sync::{OnceLock, RwLock};
 
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -38,13 +40,34 @@ pub fn append<T: Serialize>(record: &T) -> std::io::Result<()> {
     writeln!(file, "{line}")
 }
 
-/// The generic record written by seams that have no enriched payload of their
-/// own (retrieval and web). Memory and compaction keep their richer records;
-/// the fields below are the subset `/decision` reads.
+#[derive(Clone, Debug, Default)]
+struct Context {
+    agent: Option<String>,
+    session: Option<String>,
+}
+
+fn context() -> &'static RwLock<Context> {
+    static CELL: OnceLock<RwLock<Context>> = OnceLock::new();
+    CELL.get_or_init(|| RwLock::new(Context::default()))
+}
+
+/// Who is deciding: the `--agent` name and the session id, stamped on every
+/// record this process writes. Unset fields are written as `unknown` / absent.
+pub fn set_context(agent: Option<&str>, session: Option<&str>) {
+    *context().write().unwrap_or_else(|e| e.into_inner()) = Context {
+        agent: agent.map(str::to_string),
+        session: session.map(str::to_string),
+    };
+}
+
+/// The record written by every web seam.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct OutcomeRecord<'a> {
     timestamp: String,
+    agent: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session: Option<String>,
     point: &'a str,
     model: &'a str,
     latency_ms: u64,
@@ -99,8 +122,11 @@ pub fn log_outcome(point: DecisionPoint, outcome: &DecisionOutcome) {
             .map(|agrees| json!({"agrees": agrees})),
         _ => None,
     };
+    let context = context().read().unwrap_or_else(|e| e.into_inner()).clone();
     let record = OutcomeRecord {
         timestamp: chrono::Utc::now().to_rfc3339(),
+        agent: context.agent.unwrap_or_else(|| "unknown".to_string()),
+        session: context.session,
         point: point.as_str(),
         model: &receipt.model,
         latency_ms: receipt.latency.as_millis().min(u128::from(u64::MAX)) as u64,

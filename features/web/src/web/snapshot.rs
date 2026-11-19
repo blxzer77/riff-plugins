@@ -1,12 +1,12 @@
 //! Content-addressed WebFetch snapshots and local range reads.
 //!
-//! the old in-process body LRU is replaced by a URL → latest hash index;
-//! the body is durable, globally scoped under `$RIFF_HOME`, and never
-//! overwritten when a page changes.
+//! The body is durable, globally scoped under `$RIFF_HOME`, and never
+//! overwritten when a page changes. A URL → latest hash index under
+//! `$RIFF_HOME/url-index/` (one file per URL) replaces nyan's in-process
+//! index, so a `riff web fetch` in a later process still finds it (design 2.3).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
@@ -95,15 +95,39 @@ impl std::fmt::Display for RangeError {
 
 impl std::error::Error for RangeError {}
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct UrlIndexEntry {
     hash: String,
     fetched_at: DateTime<Utc>,
 }
 
-fn index() -> &'static Mutex<HashMap<String, UrlIndexEntry>> {
-    static INDEX: OnceLock<Mutex<HashMap<String, UrlIndexEntry>>> = OnceLock::new();
-    INDEX.get_or_init(|| Mutex::new(HashMap::new()))
+fn url_index_dir() -> PathBuf {
+    crate::home::riff_home().join("url-index")
+}
+
+fn url_index_path(normalized: &str) -> PathBuf {
+    url_index_dir().join(sha256_hex(normalized.as_bytes()))
+}
+
+fn read_index_entry(normalized: &str) -> Option<UrlIndexEntry> {
+    let bytes = std::fs::read(url_index_path(normalized)).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// Temp file + rename: concurrent writers for one URL cannot leave a torn
+/// file, and the last writer wins (the entry is only a pointer).
+fn write_index_entry(normalized: &str, entry: &UrlIndexEntry) -> std::io::Result<()> {
+    let dir = url_index_dir();
+    ensure_private_dir(&dir)?;
+    let path = url_index_path(normalized);
+    let temp = dir.join(format!(".tmp-{}", uuid::Uuid::new_v4().simple()));
+    std::fs::write(
+        &temp,
+        serde_json::to_vec(entry).map_err(std::io::Error::other)?,
+    )?;
+    set_private_file_permissions(&temp);
+    std::fs::rename(&temp, path)
 }
 
 pub fn snapshots_root() -> PathBuf {
@@ -164,16 +188,14 @@ fn save(
         std::fs::rename(&temp, &path)?;
         set_private_file_permissions(&path);
     }
-    if let Ok(mut entries) = index().lock() {
-        let key = normalize_index_url(index_url);
-        entries.insert(
-            key,
-            UrlIndexEntry {
-                hash: hash.to_string(),
-                fetched_at: metadata.fetched_at,
-            },
-        );
-    }
+    // The index is a cache; a failed write only costs a refetch.
+    let _ = write_index_entry(
+        &normalize_index_url(index_url),
+        &UrlIndexEntry {
+            hash: hash.to_string(),
+            fetched_at: metadata.fetched_at,
+        },
+    );
     Ok(Snapshot {
         hash: hash.to_string(),
         metadata,
@@ -184,8 +206,7 @@ fn save(
 
 /// Latest snapshot for a URL, only while the 15-minute index entry is fresh.
 pub fn lookup_latest(url: &str) -> Option<Snapshot> {
-    let key = normalize_index_url(url);
-    let entry = index().lock().ok()?.get(&key).cloned()?;
+    let entry = read_index_entry(&normalize_index_url(url))?;
     let age = Utc::now().signed_duration_since(entry.fetched_at);
     if age < chrono::Duration::zero() || age.to_std().ok()? > INDEX_TTL {
         return None;
@@ -197,15 +218,11 @@ pub fn lookup_latest(url: &str) -> Option<Snapshot> {
 /// continuation reads the snapshot for as long as the file exists, and does not
 /// count against the fetch budget).
 ///
-/// The index is process memory, so after a restart there is no entry; the scan
+/// After `riff web reset` (or a lost index file) there is no entry; the scan
 /// fallback finds the newest snapshot whose header names the URL.
 pub fn lookup_any(url: &str) -> Option<Snapshot> {
     let key = normalize_index_url(url);
-    let cached = index()
-        .lock()
-        .ok()
-        .and_then(|entries| entries.get(&key).cloned());
-    match cached.and_then(|entry| read(&entry.hash).ok()) {
+    match read_index_entry(&key).and_then(|entry| read(&entry.hash).ok()) {
         Some(snapshot) => Some(snapshot),
         None => find_latest_on_disk(&key),
     }
@@ -252,10 +269,10 @@ fn find_latest_on_disk(normalized: &str) -> Option<Snapshot> {
 /// Test seam: make an index entry look `age` old.
 #[cfg(test)]
 pub fn age_index_entry_for_tests(url: &str, age: chrono::Duration) {
-    if let Ok(mut entries) = index().lock()
-        && let Some(entry) = entries.get_mut(&normalize_index_url(url))
-    {
+    let key = normalize_index_url(url);
+    if let Some(mut entry) = read_index_entry(&key) {
         entry.fetched_at = Utc::now() - age;
+        write_index_entry(&key, &entry).unwrap();
     }
 }
 
@@ -279,10 +296,9 @@ pub fn read(hash: &str) -> Result<Snapshot, std::io::Error> {
     })
 }
 
+/// Forgets every URL → snapshot pointer; the snapshots stay.
 pub fn clear_index() {
-    if let Ok(mut entries) = index().lock() {
-        entries.clear();
-    }
+    let _ = std::fs::remove_dir_all(url_index_dir());
 }
 
 pub fn cleanup_retention(days: u32) -> Result<usize, std::io::Error> {

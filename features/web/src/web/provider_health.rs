@@ -186,6 +186,8 @@ struct EntryState {
     probing: bool,
     last_reason: Option<String>,
     last_severity: Option<FailureSeverity>,
+    /// Unix milliseconds of the last recorded outcome (`None` = never written).
+    updated_at: Option<u64>,
 }
 
 impl EntryState {
@@ -413,6 +415,7 @@ impl ProviderHealthRegistry {
             .entry((provider.to_string(), capability))
             .or_default();
         entry.clear_down();
+        entry.updated_at = Some(crate::state::unix_now_ms());
     }
 
     pub fn record_failure_at(
@@ -455,6 +458,7 @@ impl ProviderHealthRegistry {
             entry.probing = false;
             entry.last_reason = Some(code.clone());
             entry.last_severity = Some(severity);
+            entry.updated_at = Some(crate::state::unix_now_ms());
 
             match severity {
                 FailureSeverity::Soft => {
@@ -666,6 +670,102 @@ pub fn next_soft_down_provider(
 
 pub fn reset() {
     shared().reset();
+}
+
+/// One `(provider, capability)` entry as stored in `state/health.json`.
+/// `probing` is not stored: a probe belongs to the process that claimed it,
+/// and in a short-lived process the next real call is the probe.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersistedEntry {
+    pub provider: String,
+    pub capability: String,
+    pub soft_streak: u32,
+    pub downs: u32,
+    /// Unix seconds.
+    pub down_until: Option<u64>,
+    pub fingerprint: Option<String>,
+    pub last_reason: Option<String>,
+    pub last_hard: Option<bool>,
+    /// Unix milliseconds of the last change, for merging concurrent writers.
+    pub updated_at: u64,
+}
+
+impl PersistedEntry {
+    pub fn key(&self) -> (String, String) {
+        (self.provider.clone(), self.capability.clone())
+    }
+}
+
+fn capability_from_str(name: &str) -> Option<Capability> {
+    [Capability::Search, Capability::Fetch]
+        .into_iter()
+        .find(|capability| capability.as_str() == name)
+}
+
+pub fn persist() -> Vec<PersistedEntry> {
+    let now = Instant::now();
+    let unix = crate::state::unix_now();
+    let entries = shared().entries.lock().unwrap_or_else(|p| p.into_inner());
+    let mut out = entries
+        .iter()
+        .map(|((provider, capability), entry)| PersistedEntry {
+            provider: provider.clone(),
+            capability: capability.as_str().to_string(),
+            soft_streak: entry.soft_streak,
+            downs: entry.downs,
+            down_until: entry
+                .down_until
+                .map(|until| unix + until.saturating_duration_since(now).as_secs()),
+            fingerprint: entry.fingerprint.clone(),
+            last_reason: entry.last_reason.clone(),
+            last_hard: entry
+                .last_severity
+                .map(|severity| severity == FailureSeverity::Hard),
+            updated_at: entry.updated_at.unwrap_or(0),
+        })
+        .collect::<Vec<_>>();
+    // Deterministic file content.
+    out.sort_by_key(PersistedEntry::key);
+    out
+}
+
+pub fn restore(persisted: &[PersistedEntry]) {
+    let now = Instant::now();
+    let unix = crate::state::unix_now();
+    let mut entries = shared().entries.lock().unwrap_or_else(|p| p.into_inner());
+    entries.clear();
+    for stored in persisted {
+        let Some(capability) = capability_from_str(&stored.capability) else {
+            continue;
+        };
+        if !is_commercial_provider(&stored.provider) {
+            continue;
+        }
+        entries.insert(
+            (stored.provider.clone(), capability),
+            EntryState {
+                soft_streak: stored.soft_streak,
+                downs: stored.downs,
+                // An expired window restores as "expired", so the next call
+                // is the probe.
+                down_until: stored
+                    .down_until
+                    .map(|until| now + Duration::from_secs(until.saturating_sub(unix))),
+                fingerprint: stored.fingerprint.clone(),
+                probing: false,
+                last_reason: stored.last_reason.clone(),
+                last_severity: stored.last_hard.map(|hard| {
+                    if hard {
+                        FailureSeverity::Hard
+                    } else {
+                        FailureSeverity::Soft
+                    }
+                }),
+                updated_at: Some(stored.updated_at),
+            },
+        );
+    }
 }
 
 /// Test-only serialisation for the process-wide registry plus a clean reset.

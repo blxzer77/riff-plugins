@@ -420,8 +420,8 @@ fn confidence_gate(
 // Session budget (§5.3)
 // ════════════════════════════════════════════════════════════
 
-/// Per-session counters. Shared process-wide because nyan runs one session per
-/// process and every module spends the same person's budget. `/clear` resets it.
+/// Per-session counters, loaded from and stored to the session file around
+/// each command (`crate::state`). `riff web reset` resets it.
 #[derive(Debug, Default)]
 pub struct SessionBudget {
     calls: AtomicU32,
@@ -481,9 +481,33 @@ fn session_budget() -> &'static SessionBudget {
         .as_ref()
 }
 
-/// Reset the process-wide decision budget. Call on `/clear` / new session.
+/// Reset the process-wide decision budget (`riff web reset`).
 pub fn reset_session_budget() {
     session_budget().reset();
+}
+
+/// The decision budget as stored in the session file.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct PersistedBudget {
+    pub calls: u32,
+    pub input_tokens: u64,
+}
+
+pub fn persist_session_budget() -> PersistedBudget {
+    let (calls, input_tokens) = session_budget_used();
+    PersistedBudget {
+        calls,
+        input_tokens,
+    }
+}
+
+pub fn restore_session_budget(persisted: &PersistedBudget) {
+    let budget = session_budget();
+    budget.calls.store(persisted.calls, Ordering::Relaxed);
+    budget
+        .input_tokens
+        .store(persisted.input_tokens, Ordering::Relaxed);
 }
 
 /// `(calls, input tokens)` spent by the process-wide decision budget.

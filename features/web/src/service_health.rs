@@ -144,6 +144,8 @@ struct State {
     last_failure: Option<FailureKind>,
     /// A probe was claimed and has not reported back yet.
     probing: bool,
+    /// Unix milliseconds of the last recorded outcome (`None` = never written).
+    updated_at: Option<u64>,
 }
 
 pub struct ServiceHealth {
@@ -152,6 +154,9 @@ pub struct ServiceHealth {
     request_timeout: Duration,
     probe: Mutex<Option<ProbeFn>>,
     state: Mutex<State>,
+    /// See [`set_inline_probes`]; per instance so tests can pick a mode
+    /// without touching the process-wide default.
+    inline: std::sync::atomic::AtomicBool,
 }
 
 impl std::fmt::Debug for ServiceHealth {
@@ -187,8 +192,15 @@ impl ServiceHealth {
                 consecutive_failures: 0,
                 last_failure: None,
                 probing: false,
+                updated_at: None,
             }),
+            inline: std::sync::atomic::AtomicBool::new(inline_probes()),
         }
+    }
+
+    pub fn set_inline(&self, enabled: bool) {
+        self.inline
+            .store(enabled, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub fn kind(&self) -> ServiceKind {
@@ -240,6 +252,13 @@ impl ServiceHealth {
             None => CallPermit::Allowed,
             Some(until) if now < until => CallPermit::Skipped,
             Some(_) if state.probing => CallPermit::Skipped,
+            // A short-lived process cannot keep a background probe alive past
+            // its exit, so the call that finds the window expired is the probe
+            // (design 2.3): it goes ahead and records its own outcome.
+            Some(_) if self.inline.load(std::sync::atomic::Ordering::Relaxed) => {
+                state.probing = true;
+                CallPermit::Allowed
+            }
             Some(_) => {
                 state.probing = true;
                 CallPermit::Probe
@@ -292,6 +311,7 @@ impl ServiceHealth {
         state.consecutive_failures = 0;
         state.last_failure = None;
         state.probing = false;
+        state.updated_at = Some(crate::state::unix_now_ms());
     }
 
     /// Record a failed request: Down for the next backoff window.
@@ -305,6 +325,7 @@ impl ServiceHealth {
         state.last_failure = Some(kind);
         state.down_until = Some(now + backoff_for(state.consecutive_failures));
         state.probing = false;
+        state.updated_at = Some(crate::state::unix_now_ms());
     }
 
     /// Report the outcome of a probe. Success restores Ready; failure keeps
@@ -344,6 +365,99 @@ fn registry() -> &'static Registry {
         searxng: Arc::new(ServiceHealth::new(ServiceKind::Searxng)),
         emrank: Arc::new(ServiceHealth::new(ServiceKind::Emrank)),
     })
+}
+
+static INLINE_PROBES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Make the next real call after an expired window the probe, instead of a
+/// background task, for every shared instance and every instance created
+/// afterwards. The CLI turns this on; the background path stays the default.
+pub fn set_inline_probes(enabled: bool) {
+    INLINE_PROBES.store(enabled, std::sync::atomic::Ordering::Relaxed);
+    for kind in PERSISTED_KINDS {
+        shared(kind).set_inline(enabled);
+    }
+}
+
+fn inline_probes() -> bool {
+    INLINE_PROBES.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Services riff uses; only these are stored in `state/health.json`.
+const PERSISTED_KINDS: [ServiceKind; 3] = [
+    ServiceKind::Searxng,
+    ServiceKind::Rerank,
+    ServiceKind::Emrank,
+];
+
+/// One service's health as stored in `state/health.json`. `probing` is not
+/// stored (see [`set_inline_probes`]).
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersistedService {
+    pub kind: String,
+    /// Unix seconds.
+    pub down_until: Option<u64>,
+    pub consecutive_failures: u32,
+    pub last_failure: Option<String>,
+    /// Unix milliseconds of the last change, for merging concurrent writers.
+    pub updated_at: u64,
+}
+
+fn failure_from_str(name: &str) -> Option<FailureKind> {
+    [
+        FailureKind::Unreachable,
+        FailureKind::Timeout,
+        FailureKind::RateLimited,
+        FailureKind::Auth,
+        FailureKind::Budget,
+        FailureKind::ModelNotFound,
+        FailureKind::InvalidResponse,
+    ]
+    .into_iter()
+    .find(|kind| kind.as_str() == name)
+}
+
+pub fn persist() -> Vec<PersistedService> {
+    let now = Instant::now();
+    let unix = crate::state::unix_now();
+    PERSISTED_KINDS
+        .iter()
+        .filter_map(|kind| {
+            let health = shared(*kind);
+            let state = health.state.lock().unwrap_or_else(|p| p.into_inner());
+            // Never touched by this process: nothing to say about it.
+            let updated_at = state.updated_at?;
+            Some(PersistedService {
+                kind: kind.as_str().to_string(),
+                down_until: state
+                    .down_until
+                    .map(|until| unix + until.saturating_duration_since(now).as_secs()),
+                consecutive_failures: state.consecutive_failures,
+                last_failure: state.last_failure.map(|kind| kind.as_str().to_string()),
+                updated_at,
+            })
+        })
+        .collect()
+}
+
+pub fn restore(persisted: &[PersistedService]) {
+    let now = Instant::now();
+    let unix = crate::state::unix_now();
+    for kind in PERSISTED_KINDS {
+        let health = shared(kind);
+        let mut state = health.state.lock().unwrap_or_else(|p| p.into_inner());
+        let stored = persisted.iter().find(|entry| entry.kind == kind.as_str());
+        state.down_until = stored
+            .and_then(|entry| entry.down_until)
+            .map(|until| now + Duration::from_secs(until.saturating_sub(unix)));
+        state.consecutive_failures = stored.map_or(0, |entry| entry.consecutive_failures);
+        state.last_failure = stored
+            .and_then(|entry| entry.last_failure.as_deref())
+            .and_then(failure_from_str);
+        state.probing = false;
+        state.updated_at = stored.map(|entry| entry.updated_at);
+    }
 }
 
 /// The shared instance for a service. Callers must not construct their own:
@@ -589,5 +703,33 @@ mod tests {
         assert_eq!(health.call_permit_at(t0 + BACKOFF_BASE), CallPermit::Probe);
         health.spawn_probe();
         assert_eq!(health.call_permit(), CallPermit::Allowed);
+    }
+
+    #[test]
+    fn inline_mode_lets_the_next_real_call_probe_and_record_its_outcome() {
+        let health = ServiceHealth::new(ServiceKind::Searxng);
+        health.set_inline(true);
+        let t0 = Instant::now();
+        health.record_failure_at(t0, FailureKind::Unreachable);
+        assert_eq!(health.call_permit_at(at(t0, 1)), CallPermit::Skipped);
+        // Window expired: this call goes ahead; a concurrent one does not.
+        assert_eq!(
+            health.call_permit_at(t0 + BACKOFF_BASE),
+            CallPermit::Allowed
+        );
+        assert_eq!(
+            health.call_permit_at(t0 + BACKOFF_BASE),
+            CallPermit::Skipped
+        );
+        // Its failure doubles the window, as a background probe's would.
+        health.record_failure_at(t0 + BACKOFF_BASE, FailureKind::Timeout);
+        let next = t0 + BACKOFF_BASE + backoff_for(2);
+        assert_eq!(
+            health.call_permit_at(next - Duration::from_millis(1)),
+            CallPermit::Skipped
+        );
+        assert_eq!(health.call_permit_at(next), CallPermit::Allowed);
+        health.record_success();
+        assert!(health.is_ready());
     }
 }

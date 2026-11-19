@@ -63,6 +63,21 @@ nyan 里有六类状态只存在进程内存里（`OnceLock` / `Mutex` 单例）
 
 落盘状态都放在 `$RIFF_HOME/state/`（第三节），只存计数、时间戳、hash 与 URL，不存 key、查询正文与页面正文。
 
+**实现（`features/web/src/state.rs`）**：
+
+- 文件：`state/sessions/<id>.json`（预算、决策预算、候选、探针）与 `state/health.json`（provider 与服务健康，所有会话
+  共用）。URL 索引在 `url-index/`（上表）。
+- 读写方式：命令开始时把文件内容装进 nyan 原有的进程内结构，结束时写回；进程内逻辑与其测试不变。会话文件的独占锁
+  （标准库 `File::lock`）持有整条命令，所以**同一会话的并发调用串行执行**，计数不丢；这把 nyan 的
+  `maxConcurrentSearches = 2` 在单个会话内实际降为 1（不同会话照常并行）。宿主在一个会话里几乎不并发搜索，接受；
+  若实测有影响，再改为只在读改写时持锁。
+- `health.json` 只在载入和写回时短暂加锁。写回时**只写本进程记录过结果的条目**（以毫秒级 `updatedAt` 是否变化判断），
+  其余保留文件里的值，避免一个进程用它载入时的旧状态覆盖别的会话刚记下的冷却。
+- 试探：短进程退出时会杀掉后台任务，所以 `ServiceHealth` 在 CLI 里开启"同步试探"——窗口到期后拿到许可的那次真实
+  调用就是试探，结果照常记录；`probing` 不落盘。商业 provider 本来就是这种方式（PH 3.4）。
+- 损坏或无法解析的状态文件按空状态处理并在下次写回时覆盖：状态是计数缓存，坏文件不能卡住后续所有命令。
+- 7 天未更新的会话文件在写回时顺手删除。
+
 ### 2.4 会话
 
 ES 3.5 的预算按"会话"计；riff 没有自己的会话，借宿主的：
@@ -70,8 +85,10 @@ ES 3.5 的预算按"会话"计；riff 没有自己的会话，借宿主的：
 - 会话 id 来源：`--session <id>` 参数，或环境变量 `RIFF_SESSION`。适配层负责传入宿主的会话 id：pi 扩展从
   `ctx` 取；Claude Code 与 Codex 的 hook 输入都带 `session_id`，由 SessionStart hook 设法让后续 shell 命令拿到它（两家
   的具体机制都待核实，第十节）；Antigravity hook 带 `conversationId`。
-- **没有会话 id 时**：预算按"同一工作目录的 6 小时滑动窗口"计（键 = canonical cwd），上限与 ES 3.5 相同。理由：没有
-  会话就没有自然的清零点，按时间窗口是唯一不会无限累加、也不会每次清零的做法。
+- **没有会话 id 时**：预算按"同一工作目录的 6 小时时段"计（键 = canonical cwd 的 hash + `floor(unix 时间 / 6 h)`），
+  上限与 ES 3.5 相同。理由：没有会话就没有自然的清零点，按时间窗口是唯一不会无限累加、也不会每次清零的做法。实现用
+  固定时段而不是滑动窗口：结果可预期、不需要记每次调用的时间；代价是时段边界处会提前清零。
+- 会话 id 在路径里只用其 SHA-256 前缀（`s-<hex>`），宿主传什么都不会逃出 `state/sessions/`。
 - `/clear` 之类的重置：ES 3.5 / PH 3.5 依赖 nyan 的 `/clear`。riff 提供 `riff web reset [--session <id>]` 清该会话的
   预算与 provider 冷却；适配层可在宿主的 `/clear` 对应事件（Claude Code SessionStart `source=clear`、pi
   `session_start` 的 `new`）上调用。
@@ -137,8 +154,8 @@ $RIFF_HOME                 默认 ~/.riff（XDG 环境下仍用 ~/.riff，不拆
 ### 4.1 用法
 
 ```
-riff web search <query...> [--limit N] [--allow-domain D]... [--block-domain D]... [--json] [--timeout S] [--session ID]
-riff web fetch  <url> [--range SPEC] [--json] [--timeout S] [--session ID]
+riff web search <query...> [--limit N] [--allow-domain D]... [--block-domain D]... [--json] [--timeout S] [--session ID] [--agent NAME]
+riff web fetch  <url> [--range SPEC] [--query TEXT] [--json] [--timeout S] [--session ID] [--agent NAME]
 riff web reset  [--session ID]
 riff web doctor
 riff init
@@ -150,6 +167,8 @@ riff hook <event> --agent <name>     适配层专用（7.1），不在 skill 里
 | 命令名 `nyan web` → `riff web`；续读命令 `[next segment: riff web fetch … --range N-]`（`cli/web.rs:533-536`） | 改名 |
 | 新增 `--allow-domain` / `--block-domain` | nyan 的 WebSearch 工具有 `allowed_domains` / `blocked_domains`（ES 3.1），`nyan web` CLI 没暴露；宿主的 web 工具参数里有这两项，适配层要能透传 |
 | 新增 `--session` | 2.4 |
+| 新增 `--agent` | 决策日志的 `agent` 列（第五节） |
+| 新增 fetch `--query` | nyan 的 `web.page_answers` 只在 WebFetch 带 `prompt` 时运行（`prompt` 是它唯一拿得到的查询），`nyan web fetch` 没有对应参数，所以 CLI 下这个决策点从不触发。riff 去掉了 `prompt` 抽取（4.4），改用 `--query` 提供查询：判定页面不含答案时在输出末尾加一行提示下一个候选，正文不变。**只在新抓取时判定**：命中 URL 索引或续读时不再问，同一快照的输出保持逐字节相同（6.1） |
 | 新增 `reset`、`doctor` | `reset` 见 2.4；`doctor` 逐项报告配置、每个 provider 的 key 是否可读（不打印 key）、代理变量、`pdftotext`、rerank / SearXNG / EMRank 可达性，以及落盘的冷却状态，供用户与适配层排错 |
 | `--timeout` 默认 15 s 不变 | 与 `nyan web` 相同；宿主执行命令的超时是否都大于 15 s 待核实（第十节第 1 条） |
 | 单次 stdout 上限 30,000 字节不变（`cli/web.rs:20`） | 见 6.2 |

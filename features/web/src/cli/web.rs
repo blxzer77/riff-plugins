@@ -26,6 +26,7 @@ const MAX_LIMIT: usize = 20;
 pub const HELP: &str = "\
 Usage: riff web search <query...> [options]
        riff web fetch <url> [options]
+       riff web reset [--session <id>]
 
 Web search and verbatim page fetch, configured by $RIFF_HOME/config.json
 (default ~/.riff; providers, decision, rerank, key files) and the proxy
@@ -35,6 +36,7 @@ Commands:
   search <query...>   Search every enabled provider; words are joined by spaces
   fetch <url>         Print the page's original text, one segment at a time.
                       The output ends with the exact command for the next segment.
+  reset               Clear this session's budgets and every provider cooldown
 
 Options:
       --json             Print JSON instead of Markdown
@@ -43,6 +45,11 @@ Options:
       --allow-domain <d> search: only results from this domain (repeatable)
       --block-domain <d> search: never results from this domain (repeatable)
       --range <spec>     fetch: chars:START-[END], START-[END] or #heading
+      --query <text>     fetch: what you are looking for; a fresh fetch may add
+                         a hint naming another result when the page lacks it
+      --session <id>     The host agent's session id (default $RIFF_SESSION;
+                         without one, a 6-hour window per working directory)
+      --agent <name>     The calling agent, recorded in the decision log
   -h, --help             Show this help
       --                 Treat every later word as a query word or URL
 
@@ -57,11 +64,15 @@ pub(crate) enum Command {
     Search {
         query: String,
         limit: usize,
+        allowed_domains: Vec<String>,
+        blocked_domains: Vec<String>,
     },
     Fetch {
         url: String,
         range: Option<RangeSpec>,
+        query: Option<String>,
     },
+    Reset,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -69,6 +80,8 @@ pub(crate) struct Invocation {
     pub command: Command,
     pub json: bool,
     pub timeout: Duration,
+    pub session: Option<String>,
+    pub agent: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -109,6 +122,11 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, String> {
     let mut timeout = DEFAULT_TIMEOUT;
     let mut limit = None;
     let mut range = None;
+    let mut query = None;
+    let mut session = None;
+    let mut agent = None;
+    let mut allowed_domains = Vec::new();
+    let mut blocked_domains = Vec::new();
     let mut positional = Vec::new();
     let mut options = true;
     let mut index = 0;
@@ -140,6 +158,11 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, String> {
             "--timeout" => timeout = parse_timeout(&value()?)?,
             "--limit" => limit = Some(parse_limit(&value()?)?),
             "--range" => range = Some(parse_range(&value()?)?),
+            "--query" => query = Some(non_empty("--query", value()?)?),
+            "--session" => session = Some(non_empty("--session", value()?)?),
+            "--agent" => agent = Some(non_empty("--agent", value()?)?),
+            "--allow-domain" => allowed_domains.push(parse_domain("--allow-domain", &value()?)?),
+            "--block-domain" => blocked_domains.push(parse_domain("--block-domain", &value()?)?),
             _ => return Err(format!("unknown option `{arg}`")),
         }
     }
@@ -152,6 +175,9 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, String> {
             if range.is_some() {
                 return Err("--range only applies to `fetch`".to_string());
             }
+            if query.is_some() {
+                return Err("--query only applies to `fetch`".to_string());
+            }
             let query = positional.collect::<Vec<_>>().join(" ");
             if query.trim().is_empty() {
                 return Err("`search` requires a <query>".to_string());
@@ -159,11 +185,16 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, String> {
             Command::Search {
                 query,
                 limit: limit.unwrap_or(DEFAULT_LIMIT),
+                allowed_domains,
+                blocked_domains,
             }
         }
         Some("fetch") => {
             if limit.is_some() {
                 return Err("--limit only applies to `search`".to_string());
+            }
+            if !allowed_domains.is_empty() || !blocked_domains.is_empty() {
+                return Err("--allow-domain / --block-domain only apply to `search`".to_string());
             }
             let Some(url) = positional.next() else {
                 return Err("`fetch` requires a <url>".to_string());
@@ -174,20 +205,56 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, String> {
             if reqwest::Url::parse(&url).is_err() {
                 return Err(format!("invalid URL `{url}`"));
             }
-            Command::Fetch { url, range }
+            Command::Fetch { url, range, query }
+        }
+        Some("reset") => {
+            if let Some(extra) = positional.next() {
+                return Err(format!("unexpected argument `{extra}`"));
+            }
+            if limit.is_some() || range.is_some() || query.is_some() || json {
+                return Err("`reset` takes only --session".to_string());
+            }
+            Command::Reset
         }
         Some(other) => {
             return Err(format!(
-                "unknown command `{other}`: expected `search` or `fetch`"
+                "unknown command `{other}`: expected `search`, `fetch` or `reset`"
             ));
         }
-        None => return Err("missing command: expected `search` or `fetch`".to_string()),
+        None => {
+            return Err("missing command: expected `search`, `fetch` or `reset`".to_string());
+        }
     };
     Ok(Parsed::Run(Invocation {
         command,
         json,
         timeout,
+        session,
+        agent,
     }))
+}
+
+fn non_empty(flag: &str, value: String) -> Result<String, String> {
+    let value = value.trim().to_string();
+    if value.is_empty() {
+        return Err(format!("{flag} requires a non-empty value"));
+    }
+    Ok(value)
+}
+
+/// A bare host name, as the search filter compares it (`example.com`, not a URL).
+fn parse_domain(flag: &str, raw: &str) -> Result<String, String> {
+    let domain = raw.trim().trim_end_matches('.').to_ascii_lowercase();
+    let valid = !domain.is_empty()
+        && domain
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.');
+    if !valid {
+        return Err(format!(
+            "invalid {flag} `{raw}`: expected a domain like example.com"
+        ));
+    }
+    Ok(domain)
 }
 
 fn parse_timeout(raw: &str) -> Result<Duration, String> {
@@ -252,6 +319,34 @@ pub fn run(args: &[String]) -> i32 {
         return exit::CONFIG;
     };
     crate::runtime::set_config(Some(config));
+    crate::service_health::set_inline_probes(true);
+    crate::decision::log::set_context(invocation.agent.as_deref(), None);
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let id = crate::state::SessionId::resolve(
+        invocation.session.as_deref(),
+        &cwd,
+        std::time::SystemTime::now(),
+    );
+    crate::decision::log::set_context(invocation.agent.as_deref(), Some(id.as_str()));
+    let session = match crate::state::Session::load(id) {
+        Ok(session) => session,
+        Err(error) => {
+            eprintln!(
+                "riff web: cannot open session state under {}: {error}",
+                crate::state::state_dir().display()
+            );
+            return exit::OTHER;
+        }
+    };
+    if invocation.command == Command::Reset {
+        return match session.reset() {
+            Ok(()) => 0,
+            Err(error) => {
+                eprintln!("riff web: cannot reset session state: {error}");
+                exit::OTHER
+            }
+        };
+    }
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -266,6 +361,11 @@ pub fn run(args: &[String]) -> i32 {
     // Dropping the runtime would wait for leftover blocking work (a DNS
     // lookup the timeout abandoned); the total timeout must stay total.
     runtime.shutdown_background();
+    // Counters are stored even when the command failed: a failed provider
+    // call still spent its budget and still counts toward its cooldown.
+    if let Err(error) = session.store() {
+        eprintln!("riff web: cannot store session state: {error}");
+    }
     match result {
         Ok(output) => {
             let mut stdout = std::io::stdout().lock();
@@ -295,13 +395,28 @@ pub(crate) async fn execute(
     let abort = AbortController::default();
     let work = async {
         match &invocation.command {
-            Command::Search { query, limit } => {
-                search(query, *limit, web, &abort, invocation.json).await
+            Command::Search {
+                query,
+                limit,
+                allowed_domains,
+                blocked_domains,
+            } => {
+                search(
+                    query,
+                    *limit,
+                    allowed_domains,
+                    blocked_domains,
+                    web,
+                    &abort,
+                    invocation.json,
+                )
+                .await
             }
-            Command::Fetch { url, range } => {
+            Command::Fetch { url, range, query } => {
                 fetch(
                     url,
                     range.as_ref(),
+                    query.as_deref(),
                     web,
                     &abort,
                     test_config,
@@ -309,6 +424,7 @@ pub(crate) async fn execute(
                 )
                 .await
             }
+            Command::Reset => Ok(String::new()),
         }
     };
     match tokio::time::timeout(invocation.timeout, work).await {
@@ -329,14 +445,24 @@ pub(crate) async fn execute(
 async fn search(
     query: &str,
     limit: usize,
+    allowed_domains: &[String],
+    blocked_domains: &[String],
     web: &WebSettings,
     abort: &AbortController,
     json: bool,
 ) -> Result<String, Failure> {
     let rerank = crate::web::rerank_client(web);
-    let outcome = crate::web::search::search(query, &[], &[], limit, web, rerank.as_ref(), abort)
-        .await
-        .map_err(search_failure)?;
+    let outcome = crate::web::search::search(
+        query,
+        allowed_domains,
+        blocked_domains,
+        limit,
+        web,
+        rerank.as_ref(),
+        abort,
+    )
+    .await
+    .map_err(search_failure)?;
     Ok(render_search(query, &outcome, json))
 }
 
@@ -464,15 +590,45 @@ fn search_json(query: &str, outcome: &SearchOutcome, shown: usize, omitted: usiz
 async fn fetch(
     url: &str,
     range: Option<&RangeSpec>,
+    query: Option<&str>,
     web: &WebSettings,
     abort: &AbortController,
     test_config: Option<crate::web::fetcher::FetchConfig>,
     json: bool,
 ) -> Result<String, Failure> {
-    let page = crate::web::read_page::read_page(url, range, web, abort, test_config)
+    let mut page = crate::web::read_page::read_page(url, range, web, abort, test_config)
         .await
         .map_err(read_failure)?;
+    // The usage signal for a retained `web.answers` / `web.page_answers`
+    // candidate (decision-provider 7): both the requested and the final URL.
+    crate::decision::probe::observe_url(url);
+    crate::decision::probe::observe_url(&page.snapshot.metadata.final_url);
+    if let Some(query) = query {
+        page.next_hint = page_hint(query, &page, abort).await;
+    }
     Ok(render_fetch(url, &page, json))
+}
+
+/// `web.page_answers` (decision-provider 4.2): only after a fresh fetch, so a
+/// cached or continued read of the same snapshot renders byte-for-byte the
+/// same output (design 6.1). It can only add a hint; the body never changes.
+async fn page_hint(query: &str, page: &PageRead, abort: &AbortController) -> Option<String> {
+    if page.origin != Origin::Fresh {
+        return None;
+    }
+    let provider = crate::web::decision::provider()?;
+    let decisions = crate::web::decision::WebDecisions::new(&provider, abort);
+    if !decisions
+        .page_lacks_answer(query, &page.selected.text)
+        .await
+    {
+        return None;
+    }
+    let next = crate::web::search::next_candidate(&page.snapshot.metadata.final_url);
+    if let Some(next) = next.as_deref() {
+        crate::web::decision::register_next_candidate_probe(next);
+    }
+    Some(next.unwrap_or_else(|| "another search result".to_string()))
 }
 
 fn read_failure(error: ReadError) -> Failure {
@@ -576,6 +732,11 @@ fn fetch_markdown(url: &str, page: &PageRead, body: &str, end: usize) -> String 
     } else {
         output.push_str("[end of page]\n");
     }
+    if let Some(next) = &page.next_hint {
+        output.push_str(&format!(
+            "[page may not answer the query — consider fetching: {next}]\n"
+        ));
+    }
     output
 }
 
@@ -604,6 +765,7 @@ fn fetch_json(url: &str, page: &PageRead, body: &str, end: usize) -> String {
         "end": end,
         "content": body,
         "next": next,
+        "may_not_answer_next": page.next_hint,
     });
     format!("{value}\n")
 }
@@ -643,9 +805,13 @@ mod tests {
                 command: Command::Search {
                     query: "rust async book".to_string(),
                     limit: 8,
+                    allowed_domains: Vec::new(),
+                    blocked_domains: Vec::new(),
                 },
                 json: false,
                 timeout: Duration::from_secs(15),
+                session: None,
+                agent: None,
             }
         );
     }
@@ -659,7 +825,9 @@ mod tests {
             invocation.command,
             Command::Search {
                 query: "q".to_string(),
-                limit: 3
+                limit: 3,
+                allowed_domains: Vec::new(),
+                blocked_domains: Vec::new(),
             }
         );
 
@@ -672,6 +840,7 @@ mod tests {
                     start: 100,
                     end: Some(200)
                 }),
+                query: None,
             }
         );
         for (spec, expected) in [
@@ -707,9 +876,67 @@ mod tests {
             invocation.command,
             Command::Search {
                 query: "--json -x".to_string(),
-                limit: 8
+                limit: 8,
+                allowed_domains: Vec::new(),
+                blocked_domains: Vec::new(),
             }
         );
+    }
+
+    #[test]
+    fn domain_session_agent_and_query_options_parse() {
+        let invocation = run_of(&[
+            "search",
+            "q",
+            "--allow-domain",
+            "Docs.RS.",
+            "--allow-domain=crates.io",
+            "--block-domain",
+            "pinterest.com",
+            "--session",
+            "abc",
+            "--agent",
+            "claude-code",
+        ]);
+        assert_eq!(
+            invocation.command,
+            Command::Search {
+                query: "q".to_string(),
+                limit: 8,
+                allowed_domains: vec!["docs.rs".to_string(), "crates.io".to_string()],
+                blocked_domains: vec!["pinterest.com".to_string()],
+            }
+        );
+        assert_eq!(invocation.session.as_deref(), Some("abc"));
+        assert_eq!(invocation.agent.as_deref(), Some("claude-code"));
+
+        let invocation = run_of(&["fetch", "https://e.com/", "--query", "how to pin a version"]);
+        assert!(matches!(
+            invocation.command,
+            Command::Fetch { query: Some(ref q), .. } if q == "how to pin a version"
+        ));
+        assert_eq!(run_of(&["reset", "--session", "x"]).command, Command::Reset);
+    }
+
+    #[test]
+    fn new_options_are_rejected_where_they_do_not_apply() {
+        for (words, expected) in [
+            (vec!["search", "q", "--query", "x"], "--query only applies"),
+            (
+                vec!["fetch", "https://e.com/", "--allow-domain", "a.com"],
+                "only apply to `search`",
+            ),
+            (
+                vec!["search", "q", "--allow-domain", "https://a.com/x"],
+                "invalid --allow-domain",
+            ),
+            (vec!["search", "q", "--session", " "], "non-empty"),
+            (vec!["reset", "--json"], "takes only --session"),
+            (vec!["reset", "extra"], "unexpected argument"),
+        ] {
+            let error = parse(&args(&words)).unwrap_err();
+            assert!(error.contains(expected), "{words:?}: {error}");
+        }
     }
 
     #[test]

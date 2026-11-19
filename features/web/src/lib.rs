@@ -11,6 +11,7 @@ pub mod rerank;
 pub mod runtime;
 pub mod service_health;
 pub mod settings;
+pub mod state;
 pub mod web;
 
 #[cfg(test)]

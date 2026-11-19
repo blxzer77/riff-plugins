@@ -1,7 +1,9 @@
-//! Session-scoped WebSearch/WebFetch budgets.
+//! Session-scoped web search/fetch budgets.
 //!
-//! counts live in the process-wide session owner so main-thread and
-//! child-agent calls spend the same limits. `/clear` calls [`reset`].
+//! The counters live in process memory while a command runs and are loaded
+//! from and stored to the session file around it (`crate::state`), so every
+//! call in one host session spends the same limits. `riff web reset` calls
+//! [`reset`].
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -196,6 +198,39 @@ pub fn snapshot() -> (u32, u32, u64, HashMap<String, u32>) {
         state.fetch_bytes,
         state.provider_calls.clone(),
     )
+}
+
+/// The session counters as stored in `state/sessions/<id>.json`. Concurrency
+/// (`active_searches`) is not persisted: it describes this process only.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Persisted {
+    pub search_calls: u32,
+    pub fetch_calls: u32,
+    pub fetch_bytes: u64,
+    pub provider_calls: std::collections::BTreeMap<String, u32>,
+}
+
+pub fn persist() -> Persisted {
+    let (search_calls, fetch_calls, fetch_bytes, provider_calls) = snapshot();
+    Persisted {
+        search_calls,
+        fetch_calls,
+        fetch_bytes,
+        provider_calls: provider_calls.into_iter().collect(),
+    }
+}
+
+pub fn restore(persisted: &Persisted) {
+    let budget = shared();
+    let mut state = budget
+        .state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    state.search_calls = persisted.search_calls;
+    state.fetch_calls = persisted.fetch_calls;
+    state.fetch_bytes = persisted.fetch_bytes;
+    state.provider_calls = persisted.provider_calls.clone().into_iter().collect();
 }
 
 pub fn reset() {

@@ -96,7 +96,7 @@ fn recent_candidates() -> &'static std::sync::Mutex<Vec<String>> {
     CANDIDATES.get_or_init(|| std::sync::Mutex::new(Vec::new()))
 }
 
-/// `/clear` starts a new conversation, so old candidates are no longer "next".
+/// `riff web reset` starts a new conversation, so old candidates are no longer "next".
 pub fn clear_candidates() {
     remember_candidates(Vec::new());
 }
@@ -105,6 +105,14 @@ pub fn remember_candidates(urls: Vec<String>) {
     if let Ok(mut candidates) = recent_candidates().lock() {
         *candidates = urls;
     }
+}
+
+/// The last search's candidates, best first, for the session file.
+pub fn recent_candidate_list() -> Vec<String> {
+    recent_candidates()
+        .lock()
+        .map(|candidates| candidates.clone())
+        .unwrap_or_default()
 }
 
 /// The best recent candidate that is not `url`.

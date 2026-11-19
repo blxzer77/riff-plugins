@@ -44,6 +44,9 @@ pub(crate) struct PageRead {
     pub origin: Origin,
     pub direct_reason: Option<String>,
     pub challenge_fallback_failed: bool,
+    /// Set by `--query` when `web.page_answers` judged the page unhelpful:
+    /// the URL to suggest instead.
+    pub next_hint: Option<String>,
 }
 
 #[derive(Debug)]
@@ -124,5 +127,6 @@ pub(crate) async fn read_page(
         origin,
         direct_reason,
         challenge_fallback_failed,
+        next_hint: None,
     })
 }
