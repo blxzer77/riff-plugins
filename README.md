@@ -1,7 +1,8 @@
 # riff-plugins
 
 Extensions for coding agents, written once and adapted to each agent: Agent Skills
-now, and features packaged as plugins later.
+for engineering work, and `riff web` — multi-provider web search and verbatim page
+reads — packaged so Claude Code, Codex, Antigravity and pi all use it.
 
 The skills cover software engineering work that agents tend to skip or get wrong:
 writing tests, recording decisions, choosing technologies, drawing module and API
@@ -17,9 +18,11 @@ This repository was previously named `riff-skills`; GitHub redirects the old nam
 
 | Path | Contents |
 |---|---|
-| `skills/` | Every installable skill, including the ones that teach an agent to use a feature from `features/` |
-| `features/` | Features that plugins ship, such as command-line tools (none yet); see [features/README.md](features/README.md) |
-| `plugins/` | One directory per plugin, with each agent's manifest side by side (none yet); see [plugins/README.md](plugins/README.md) |
+| `skills/` | Every installable skill, including `searching-the-web`, which teaches an agent to use `riff web` |
+| `features/` | The Rust crate behind the `riff` command; see [features/README.md](features/README.md) and [docs/design.md](docs/design.md) |
+| `plugins/` | One directory per plugin; [`riff-web`](plugins/riff-web) holds the Claude Code and Codex adapters, while Antigravity and pi read the repository root |
+| `pi/` | The pi extension that exposes `riff web` as two tools |
+| `crates/riff/` | The `riff` binary itself |
 | `evals/`, `tests/`, `scripts/`, `sources/`, `template/` | Development material; never installed |
 
 ## Skills
@@ -43,6 +46,7 @@ This repository was previously named `riff-skills`; GitHub redirects the old nam
 | [reviewing-code](skills/reviewing-code) | Review diffs with evidence and false-positive control |
 | [reviewing-designs](skills/reviewing-designs) | Review architecture proposals against the actual project |
 | [building-llm-applications](skills/building-llm-applications) | Build reliable, evaluated, cost-bounded LLM features |
+| [searching-the-web](skills/searching-the-web) | Search and read pages with `riff web`, citing only what was read |
 
 ### Close calls
 
@@ -60,6 +64,41 @@ This repository was previously named `riff-skills`; GitHub redirects the old nam
 | "The orders page got slow" | measuring-performance | debugging-failures, which is for wrong behavior rather than slow behavior |
 | "Run every package's checks and give me one report" | fanning-out-work | writing-tests, which writes the tests those checks run |
 | "Can two workers ever run the same job?" | checking-invariants | reviewing-designs, which reviews a whole proposal against the project; both apply to a design |
+| "What changed in the latest tokio release?" or "read this URL" | searching-the-web | debugging-failures, which is for a failure in this repository |
+
+## riff web
+
+`riff` is one binary on `PATH`: multi-provider web search, verbatim page reads
+with `range` continuation, saved snapshots, and an optional classifier that
+marks which results look like answers. The design and the measured trade-offs
+are in [docs/design.md](docs/design.md).
+
+Build it from this repository, or install a release binary:
+
+```bash
+cargo build --release --bin riff          # then put target/release/riff on PATH
+riff init                                  # writes ~/.riff/config.json, never overwrites
+riff web doctor                            # providers, keys, proxy, cooldowns
+riff web search -- rust 2024 edition changes
+riff web fetch https://doc.rust-lang.org/edition-guide/ --range '#Edition 2024'
+```
+
+Keys go in `~/.riff/keys/<provider>` (mode 0600) or `RIFF_KEY_<PROVIDER>`; the
+providers and their defaults are in `docs/design.md` §3.
+
+### Wiring it into each agent
+
+| Agent | What to install | Result |
+|---|---|---|
+| [Claude Code](plugins/riff-web) | The `riff-web` plugin from this repository's marketplace, plus the `riff` plugin for the skill | `WebSearch`/`WebFetch` calls are answered with the equivalent `riff web` command; the session id reaches later commands |
+| [Codex](plugins/riff-web/codex.md) | The `searching-the-web` skill, and `web_search = "disabled"` in `config.toml` | The hosted search is off; `CODEX_SESSION_ID` already reaches every shell command |
+| [Antigravity](plugins/riff-web) | The repository as a plugin (`agy plugin install https://github.com/blxzer77/riff-plugins`) | `search_web`/`read_url_content` calls are answered with the equivalent `riff web` command |
+| [pi](pi/extensions/riff-web.ts) | The repository as a pi package (`pi install git:github.com/blxzer77/riff-plugins`) | `web_search` and `web_fetch` tools backed by riff; the session id comes from pi |
+
+Every adapter passes `--agent` so the decision log says who asked, and lets the
+built-in tool through when riff cannot serve the call (no configuration, no
+key, budget spent, every provider cooling down) rather than leaving the agent
+without the web.
 
 ## Install and update
 

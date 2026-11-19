@@ -1,0 +1,16 @@
+{
+  "riff-web": {
+    "PreToolUse": [
+      {
+        "matcher": "search_web|read_url_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "riff hook pretooluse --agent antigravity",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

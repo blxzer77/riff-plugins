@@ -45,6 +45,13 @@ jobs:
       - name: Repository conventions
         run: python scripts/validate.py --strict
 
+      - name: Generated plugin manifests are current
+        run: python scripts/gen-manifests.py --check
+
+      # Skips when pi is not installed; the types come from pi itself.
+      - name: pi extension type-checks
+        run: scripts/check-pi-extension.sh
+
       - name: Eval scripts compile
         run: python -m py_compile skills/*/scripts/*.py scripts/*.py evals/*/checks/*.py
 

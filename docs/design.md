@@ -82,9 +82,17 @@ nyan 里有六类状态只存在进程内存里（`OnceLock` / `Mutex` 单例）
 
 ES 3.5 的预算按"会话"计；riff 没有自己的会话，借宿主的：
 
-- 会话 id 来源：`--session <id>` 参数，或环境变量 `RIFF_SESSION`。适配层负责传入宿主的会话 id：pi 扩展从
-  `ctx` 取；Claude Code 与 Codex 的 hook 输入都带 `session_id`，由 SessionStart hook 设法让后续 shell 命令拿到它（两家
-  的具体机制都待核实，第十节）；Antigravity hook 带 `conversationId`。
+- 会话 id 来源，按优先级：`--session <id>` → `RIFF_SESSION` → `CODEX_SESSION_ID` → cwd 时段。宿主各自的接法
+  （已核实，2026-11-19）：
+  - **pi**：扩展取 `ctx.sessionManager.getSessionId()`，直接作为 `--session` 传给每个调用。
+  - **Claude Code**：SessionStart hook（`riff hook sessionstart --agent claude-code`）把
+    `export RIFF_SESSION=<session_id>` 追加到 `$CLAUDE_ENV_FILE`，宿主在每条后续 shell 命令前 source 它；
+    `source` 为 `clear` 时同时清空该会话的预算。
+  - **Codex**：`CODEX_SESSION_ID` 由宿主注入每条 shell 命令的环境（`codex-rs/core/src/exec_env.rs`），riff 直接读，
+    不需要任何 hook。
+  - **Antigravity**：没有给后续命令设环境变量的机制（hook 输出只有 `injectSteps`），会话 id 只能由 PreToolUse 的
+    deny 理由里的 `--session` 带过去；没走拦截的调用按 cwd 时段计。
+  - 同一个原始 id 无论来自 flag、环境变量还是宿主，都映射到同一个会话文件（`s-<sha256 前缀>`）。
 - **没有会话 id 时**：预算按"同一工作目录的 6 小时时段"计（键 = canonical cwd 的 hash + `floor(unix 时间 / 6 h)`），
   上限与 ES 3.5 相同。理由：没有会话就没有自然的清零点，按时间窗口是唯一不会无限累加、也不会每次清零的做法。实现用
   固定时段而不是滑动窗口：结果可预期、不需要记每次调用的时间；代价是时段边界处会提前清零。
@@ -280,9 +288,10 @@ riff 的输出进入宿主上下文后会被逐字重放，所以：
   转写好：query 与 `allowed_domains` / `blocked_domains` → `riff web search … --allow-domain …`；url → `riff web fetch <url>`），
   模型照着执行即可，不必自己拼。hook 本身也是一次 `riff` 调用：`riff hook pretooluse --agent <name>` 从 stdin 读宿主的
   hook 输入，输出宿主要求的 JSON。转写规则、各家输入输出格式都在 riff 里，适配层只有一行命令。
-- **Codex**：托管工具不经 hook，用 `config.toml` 关闭内置 web 搜索（具体配置项待核实，第十节）。插件不改用户配置，安装
-  说明给出要加的片段；`riff web doctor` 在 Codex 下检查是否已关闭并提示。
-- **pi**：没有内置 web 工具，不需要拦截。
+- **Codex**：托管工具不经 hook（hooks 文档的工具覆盖表把 `WebSearch` 标为不可匹配、不可拦截），用 `config.toml` 的
+  `web_search = "disabled"` 关闭内置搜索（取值 `disabled|cached|indexed|live`，默认 `cached`）。插件不改用户配置，在
+  `plugins/riff-web/codex.md` 给出片段；**Codex 因此不需要插件**（会话 id 也已由宿主注入）。
+- **pi**：没有内置 web 工具，不需要拦截；扩展直接注册 `web_search` / `web_fetch` 两个工具。
 - **兜底**——riff 不能用时不能把宿主的 web 能力整个弄没：hook 先检查 riff 的状态，以下情况**放行**内置工具，不拦截：
   - 没有配置任何搜索 provider（拦 `WebSearch`）/ 配置文件缺失（两者都放行）；
   - 本会话的 riff 预算已用尽，或全部 provider 都在冷却中（只放行搜索，抓取仍由 riff 做）。
@@ -324,9 +333,18 @@ riff 的输出进入宿主上下文后会被逐字重放，所以：
 features/web/            crate riff-web：services/web 与 services/decision 的复制，去掉 nyan 依赖
 crates/riff/             二进制：子命令分发、配置加载、$RIFF_HOME、进程初始化（TLS、代理）
 skills/searching-the-web/
-plugins/riff-web/        各家清单与适配（pi 扩展 TS、hooks、配置片段）
+plugins/riff-web/        source.json（唯一手写清单）→ 生成的 Claude Code 插件与 hooks；codex.md 是 Codex 的接线说明
+pi/extensions/           pi 扩展（TypeScript，pi 用 jiti 直接加载，不需要编译）
+.antigravity-plugin/     Antigravity 清单（仓库根即插件根）
+hooks.json               仓库根的 Antigravity hooks
+package.json             仓库根的 pi 包声明（`pi` 字段）
+scripts/gen-manifests.py 从 source.json 生成上面三份清单；CI 跑 --check 判过期
 docs/design.md           本文
 ```
+
+- **为什么 Claude Code 在子目录、Antigravity 与 pi 在仓库根**：`agy plugin install <repo>` 与 `pi install git:…` 都只认
+  仓库根（核实于 2026-11-19；pi 的 `GitSource` 只有 `repo/host/path/ref`，`path` 指 `user/repo`）。仓库根因此同时是
+  Antigravity 插件根与 pi 包根；Claude Code 的 marketplace 指向子目录，不受影响。
 
 - **从 nyan 复制时要切断的依赖**（审计结论，均为可注入接口）：`get_initial_settings` / `get_settings_with_errors`
   → 配置对象参数；`get_config_home_dir` → `$RIFF_HOME`；`homedir`；`AbortController` → 自带的取消令牌；`log_for_debugging`
@@ -344,12 +362,14 @@ docs/design.md           本文
 1. **宿主的命令输出上限与超时**：Claude Code Bash 工具的默认输出上限与 `bashOutputMaxChars` 默认值、命令超时；Codex
    shell 工具的输出截断阈值与超时；Antigravity 同上；pi `pi.exec` 默认 256 MiB 已知。决定 6.2 的 30,000 字节与 4.1 的
    15 s 是否需要按宿主调整。
-2. **会话 id 进入命令环境的方式**（Claude Code、Codex）：SessionStart hook 能否设置后续 shell 命令的环境变量；不能则 skill
-   让模型显式传 `--session`，或退到 2.4 的时间窗口。
-3. **Claude Code 插件 + 仓库根插件并存**：同一个 marketplace 同时有根级 `riff`（skills）和 `plugins/riff-web/`，两者都含
-   `searching-the-web` 时会重复加载（`plugin:skill` 命名空间不同）——决定 skill 只放在 `riff-web` 里，还是根级插件拆掉。
-4. **Antigravity**：插件能否放在仓库子目录安装；PreToolUse 返回 deny 后模型是否按理由改用 `riff web`；MCP 工具能否替代
-   内置 web 工具。
+2. **会话 id 进入命令环境的方式**：已核实并实现（2.4）——Claude Code 用 SessionStart + `CLAUDE_ENV_FILE`，Codex 读宿主
+   注入的 `CODEX_SESSION_ID`，pi 从 `sessionManager` 取，Antigravity 只能靠 deny 理由里的 `--session`。
+3. **Claude Code 插件 + 仓库根插件并存**：已定——根级 `riff` 插件逐个列出 `skills/`（含 `searching-the-web`），
+   `riff-web` 是**纯 hook 插件**、不带 skill，所以不会重复加载。另：根级插件如果改成扫描默认 `skills/` 目录，就会把
+   `plugins/riff-web` 也扫进去，保持逐项列出即可避免。
+4. **Antigravity**：文档没有子目录安装（因此插件根放在仓库根）；`hooks.json` 用命名组 + 正则 matcher 的写法已核实，
+   官方示例同形。仍待实测：`agy plugin install` 的实际效果、插件内 symlink 的处理、PreToolUse deny 后模型是否照理由改用
+   `riff web`、默认超时。
 5. **跨平台**：Windows 上的文件锁与 0600 / 0700 权限的等价做法（nyan `docs/nyan/windows-audit.md` 可能已有结论）；macOS
    上 `pdftotext` 的来源。
 6. **PH 未核实项**（PH 第八节）与 ES 的 smoke 清单照旧，riff 不新增。

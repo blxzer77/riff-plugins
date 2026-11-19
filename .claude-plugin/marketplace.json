@@ -26,8 +26,15 @@
         "./skills/writing-adrs",
         "./skills/reviewing-code",
         "./skills/reviewing-designs",
-        "./skills/building-llm-applications"
+        "./skills/building-llm-applications",
+        "./skills/searching-the-web"
       ]
+    },
+    {
+      "name": "riff-web",
+      "description": "Routes the built-in web search and fetch to the riff command, and passes the session id along",
+      "source": "./plugins/riff-web",
+      "version": "0.1.0"
     }
   ]
 }
