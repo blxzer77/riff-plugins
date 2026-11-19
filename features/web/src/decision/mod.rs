@@ -938,7 +938,7 @@ mod tests {
         assert_eq!(receipt.state.sha256.len(), 64);
         assert_eq!(backend.requests().len(), 1);
         // The model alias from the point registry resolved to fast.
-        assert_eq!(backend.requests()[0].model, "typesafe/jev-1.14.0");
+        assert_eq!(backend.requests()[0].model, "cloudflare/clef");
     }
 
     #[tokio::test]

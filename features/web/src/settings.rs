@@ -574,7 +574,10 @@ impl EmrankSettings {
     }
     pub fn model_id(&self, alias: DecisionModel) -> String {
         let fallback = match alias {
-            DecisionModel::Fast => "typesafe/jev-1.14.0",
+            // `typesafe/jev-1.14.0` (decision-provider 5.1) is no longer
+            // listed by EMRank; clef is the one decision model that answered
+            // both point shapes correctly (design 5, 2026-11-19).
+            DecisionModel::Fast => "cloudflare/clef",
             DecisionModel::Accurate => "cloudflare/clef",
         };
         let key = match alias {

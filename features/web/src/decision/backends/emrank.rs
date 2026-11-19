@@ -6,9 +6,10 @@
 //! and constructs the shared [`SystemOneClient`]. A second System One provider
 //! needs the same ~30 lines, not a second client.
 //!
-//! Endpoint and models (measured 2026-10-27): `POST /v1/decisions`,
-//! `typesafe/jev-1.14.0` for the critical path (~0.4 s warm),
-//! `cloudflare/clef` for background points. Model IDs are pinned: `latest`
+//! Endpoint and models: `POST /v1/decisions`, `cloudflare/clef` for both
+//! aliases (design 5, measured 2026-11-19: 1.2–1.5 s per cold call, correct on
+//! the choice and batched-noul shapes; `jev-1.14.0` is no longer listed and
+//! `clef-flash` misjudged the batch). Model IDs are pinned: `latest`
 //! moves under the log, which would make `/decision` statistics
 //! incomparable across an upgrade.
 
@@ -65,7 +66,7 @@ mod tests {
         assert_eq!(settings.api_key_file(), "$RIFF_HOME/keys/emrank");
         assert_eq!(
             settings.model_id(crate::settings::DecisionModel::Fast),
-            "typesafe/jev-1.14.0",
+            "cloudflare/clef",
             "latest would move under the log"
         );
         assert_eq!(

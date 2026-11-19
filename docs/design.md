@@ -205,7 +205,7 @@ nyan 的 WebFetch 给了 `prompt` 时调用模型挑逐字摘录（ES 4.4，`ser
 - **注册表**：nyan 的 `DecisionPoint` 是与 settings schema 绑定的封闭枚举（`decision/mod.rs:50-72`）。riff 仍用封闭枚举，
   只含上面 5 个；以后的功能加决策点时在同一枚举里加，不做动态注册（封闭名单是 DP 的设计要点：每个点都有明确的确定性
   回退与安全集合）。
-- **后端**：EMRank System One，模型 `fast = typesafe/jev-1.14.0`、`accurate = cloudflare/clef`，与 DP 5.1 相同；
+- **后端**：EMRank System One，`fast` 与 `accurate` 都是 `cloudflare/clef`（DP 5.1 的 `jev-1.14.0` 已下架，见下方实测，用户 2026-11-19 选定）；
   key `$RIFF_HOME/keys/emrank`。没有 key 或 `decision.enabled = false` 时全部走确定性规则，不提示。
 - **短进程下的变化**：
   - 预热删除（2.2）；
@@ -223,7 +223,7 @@ nyan 的 WebFetch 给了 `prompt` 时调用模型挑逐字摘录（ES 4.4，`ser
   - 本机配置沿用 nyan：`fast` 与 `accurate` 都是 `cloudflare/clef`、关键路径 deadline 3000 ms。实测中 `web.query_kind`
     超时一次（3001 ms）后 EMRank 被判 Down 30 s，其后的决策全部 `backend_down`；搜索结果不受影响（走确定性规则），但
     每次搜索最多多等 3 s。
-  - 结论：在短进程下，Decision Provider 当前配置是**净损失**（多等、几乎总是回退）。待用户决定（第十节第 8 条）。
+  - 第一次实测时出现过 3001 ms 超时、EMRank 随即被判 Down 30 s；逐个模型复测（下表）后用户决定继续用 clef（第十节第 8 条）。
   - EMRank `/v1/models`（2026-11-19）列出 5 个 `kind=decision` 模型：`cloudflare/clef`、`cloudflare/clef-flash`、
     `openai/gpt-6-luna-decisions`、`typesafe/jev-1.13.0[slow]`、`typesafe/jev[slow]`；DP 设计用的 `typesafe/jev-1.14.0`
     已不在列表中。逐个冷连接实测（每项 4 次）：
@@ -364,9 +364,9 @@ docs/design.md           本文
 
    仍待核实：模型收到 deny 理由后是否照做（需要真实会话）；Codex 关闭内置 web 搜索的配置项名称与取值，以及关闭后是否
    还有别的内置联网路径。
-8. **Decision Provider 在短进程下的取舍**（第五节"实测"）：可选 (a) `fast` 改回 `typesafe/jev-1.14.0`（DP 设计值）并
-   实测冷连接延迟；(b) 默认关闭 Decision Provider，需要时由用户打开；(c) 做常驻进程（2.2 里的 MCP 模式）复用连接。
-   由用户决定。
+8. **Decision Provider 在短进程下的取舍**：已定（2026-11-19）——两个别名都用 `cloudflare/clef`，默认开启，critical
+   deadline 不变。理由与数据见第五节"实测"：`jev-1.14.0` 已下架，jev 其余版本需钱包余额，clef-flash 批量判断不准。
+   每次搜索多约 1.3 s，接受；偶发超时由确定性回退兜住。
 
 ## 十一、验收
 
