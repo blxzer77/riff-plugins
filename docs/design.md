@@ -406,3 +406,13 @@ ES 第八节、PH 第六节、DP 第十一节中 web 相关的条目全部照搬
    `riff web`、输出是否被宿主截断；Claude Code 与 Codex 各
    开一个 20 轮以上的会话、期间调用 riff 若干次，按带 `stop_reason` 的请求统计 cache 命中率，与不调用 riff 的同类会话对比
    （命中率下降说明 riff 输出不稳定或体积失控）。
+
+已完成的验证（2026-11-19，本机）：
+
+- 验收 1–5 由 `cargo test --workspace` 覆盖（267 个单元测试 + 8 个跨进程测试，跨进程测试只跑 mock provider）。
+- 验收 6 由 `riff-web` 的单测覆盖，并用真实 Claude Code / Antigravity hook 输入验证过输出格式；hook 单次耗时约 2 ms。
+  `riff hook sessionstart` 写出的环境文件能被 `sh` source 且只设置一个变量（测试里用含 shell 元字符的 session id 验证）。
+- pi 扩展用**本机真实安装的 pi 1.5.2 类型定义**做 `tsc --strict` 检查（`scripts/check-pi-extension.sh`），这一步查出了
+  一个真实的类型错误（漏用 `ExecResult`）。CI 在有 pi 的环境跑，没有则跳过。
+- 生成的清单由 `scripts/gen-manifests.py --check` 把关，`tests/test_gen_manifests.py` 检查每种格式的必需形状。
+- 仍待实测（需要真实会话 / 真机安装）：验收 7，以及 Antigravity 的 `agy plugin install`、symlink 处理与默认超时。
