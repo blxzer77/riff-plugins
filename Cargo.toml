@@ -9,3 +9,7 @@ rust-version = "1.99"
 license = "Apache-2.0"
 repository = "https://github.com/blxzer77/riff-plugins"
 publish = false
+
+[profile.release]
+strip = true
+lto = "thin"

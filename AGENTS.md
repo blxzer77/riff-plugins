@@ -3,16 +3,18 @@
 Extensions for coding agents, written once and adapted to each agent. Today it holds
 Agent Skills (https://agentskills.io/specification) for software engineering work:
 writing tests and ADRs, selecting technologies, designing modules and APIs,
-reviewing code and designs, and building LLM applications. Features packaged as
-plugins come later. Skills must work in any spec-compliant agent; no skill may
+reviewing code and designs, and building LLM applications. It also holds one
+feature packaged as a plugin: `riff web`, web search and page fetch
+(`docs/design.md`). Skills must work in any spec-compliant agent; no skill may
 depend on one vendor's client. Formerly `riff-skills`.
 
 ## Layout
 
 - `skills/<name>/` — one skill per directory; `name` in `SKILL.md` equals the directory name.
-- `features/<name>/` — one feature per directory (none yet); see `features/README.md`.
-- `plugins/<plugin>/` — one plugin per directory with each agent's manifest side by
-  side (none yet); see `plugins/README.md`.
+- `features/<name>/` — one feature per directory (today `web`, the `riff-web`
+  crate); see `features/README.md`. `crates/riff/` is the `riff` binary.
+- `plugins/<plugin>/` — one plugin per directory (today `riff-web`); manifests are
+  generated from its `source.json`, see `plugins/README.md`.
 - `evals/<name>/` — development-only output cases, trigger queries, fixtures, and checks.
 - `template/SKILL.template.md` — starting point for a new skill; it is not installable.
 - `scripts/validate.py` — repository validator; CI runs it on every push.
@@ -56,6 +58,9 @@ depend on one vendor's client. Formerly `riff-skills`.
 python3 scripts/validate.py              # must pass with no errors
 python3 scripts/validate.py --strict     # warnings too; required before listing a skill
 python3 -m unittest discover -s tests    # eval harness tests
+python3 scripts/gen-manifests.py --check # generated plugin manifests are current
+cargo fmt --all --check                  # when Rust changed
+cargo test --workspace                   # when Rust changed; writes only under target/test-tmp
 ```
 
 Eval runs write to `.workspace/` (git-ignored). Never commit workspaces or move them
@@ -79,6 +84,8 @@ time, add a check instead of repeating the rule.
 | Skills install with the generic CLI; templates and evals do not | CI install smoke test |
 | The eval harness does not trust the agent's working directory | `tests/` (CI) |
 | Eval checks judge known good and bad outputs correctly | `tests/` for the checks that have them (CI); otherwise review |
+| Plugin manifests match `plugins/<plugin>/source.json` | `scripts/gen-manifests.py --check` (CI) |
+| `riff` builds, is formatted, and its tests pass | `cargo fmt --all --check` and `cargo test --workspace` (CI) |
 | No vendor-specific tools, variables, commands, or paths in skill bodies | review |
 | Upstream material rewritten and checked against primary sources | review |
 | Facts that age carry a date or a run-time check | review |

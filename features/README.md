@@ -1,6 +1,7 @@
 # features
 
-Features that plugins ship to coding agents, such as command-line tools. None yet.
+Features that plugins ship to coding agents, such as command-line tools. Today:
+[`web`](web), the `riff web` search and page fetch.
 
 ## Conventions
 

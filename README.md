@@ -73,10 +73,21 @@ with `range` continuation, saved snapshots, and an optional classifier that
 marks which results look like answers. The design and the measured trade-offs
 are in [docs/design.md](docs/design.md).
 
-Build it from this repository, or install a release binary:
+Install a release binary (Linux and macOS; `install.ps1` does the same on
+Windows), or build it from this repository:
 
 ```bash
-cargo build --release --bin riff          # then put target/release/riff on PATH
+curl -fsSL https://raw.githubusercontent.com/blxzer77/riff-plugins/main/install.sh | bash
+cargo build --release --bin riff          # or: build, then put target/release/riff on PATH
+```
+
+The installer takes the newest `riff-vX.Y.Z` release, checks the archive
+against the release's `SHA256SUMS`, and puts `riff` in `~/.local/bin`
+(`RIFF_INSTALL_DIR` changes that; `install.sh 0.1.0` picks a version). The
+Linux binaries are static, so they run on glibc and musl systems alike. Until
+the first `riff-v` release is published, build from source.
+
+```bash
 riff init                                  # writes ~/.riff/config.json, never overwrites
 riff web doctor                            # providers, keys, proxy, cooldowns
 riff web search -- rust 2024 edition changes

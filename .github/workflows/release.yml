@@ -1,0 +1,314 @@
+name: Release riff
+
+# Builds the `riff` binary for every platform and publishes a GitHub Release.
+# A `riff-vX.Y.Z` tag publishes; a manual run is a dry run that builds, smoke
+# tests and uploads the archives as workflow artifacts without releasing.
+# Plain `vX.Y.Z` tags belong to the skills and do not start this workflow.
+
+on:
+  push:
+    tags:
+      - 'riff-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to package during the dry run; empty means the Cargo version
+        required: false
+        type: string
+        default: ''
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+
+jobs:
+  version:
+    name: Validate the release version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate tag and Cargo version
+        id: version
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          cargo_version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')"
+
+          if [ "$EVENT_NAME" = push ]; then
+            case "$REF_NAME" in
+              riff-v*) version="${REF_NAME#riff-v}" ;;
+              *) echo "::error::release workflow received an invalid tag: $REF_NAME"; exit 1 ;;
+            esac
+          else
+            version="${REQUESTED_VERSION:-$cargo_version}"
+          fi
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+            echo "::error::invalid release version: $version"
+            exit 1
+          fi
+          base_version="${version%%-*}"
+          if [ "$base_version" != "$cargo_version" ]; then
+            echo "::error::release version $version does not match the Cargo.toml version $cargo_version"
+            exit 1
+          fi
+          # The plugins share the binary's release line; agents compare the
+          # manifest version to decide whether to update.
+          plugin_version="$(python3 -c 'import json; print(json.load(open("plugins/riff-web/source.json"))["version"])')"
+          if [ "$plugin_version" != "$cargo_version" ]; then
+            echo "::error::plugins/riff-web/source.json is at $plugin_version, Cargo.toml at $cargo_version"
+            exit 1
+          fi
+
+          prerelease=false
+          if [[ "$version" == *-* ]]; then prerelease=true; fi
+          {
+            echo "version=$version"
+            echo "tag=riff-v$version"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+      # Release only what the checks have already passed: the tagged commit
+      # must be on main and have a green `validate` run of its own.
+      - name: Require a green validate run on main for this commit
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::$SHA is not on main; tag a commit that main contains"
+            exit 1
+          fi
+          passed="$(gh api "repos/$GH_REPO/actions/workflows/validate.yml/runs?head_sha=$SHA&branch=main&status=success&per_page=1" --jq '.total_count')"
+          if [ "$passed" -lt 1 ]; then
+            echo "::error::no successful validate run on main for $SHA; push the commit to main, wait for it to pass, then tag it"
+            exit 1
+          fi
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The Linux binaries are static (musl), so one archive per
+          # architecture serves glibc and musl distributions alike.
+          - name: Linux x86_64
+            platform: linux
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            archive: riff-v${{ needs.version.outputs.version }}-linux-x86_64.tar.gz
+          - name: Linux aarch64
+            platform: linux
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            archive: riff-v${{ needs.version.outputs.version }}-linux-aarch64.tar.gz
+          - name: macOS aarch64
+            platform: macos
+            runner: macos-15
+            target: aarch64-apple-darwin
+            archive: riff-v${{ needs.version.outputs.version }}-macos-aarch64.tar.gz
+          - name: macOS x86_64
+            platform: macos
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+            archive: riff-v${{ needs.version.outputs.version }}-macos-x86_64.tar.gz
+          - name: Windows x86_64
+            platform: windows
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            archive: riff-v${{ needs.version.outputs.version }}-windows-x86_64.zip
+    steps:
+      - name: Check out source
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      # rust-toolchain.toml pins the version.
+      - name: Install the pinned Rust toolchain and the target
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          rustup toolchain install
+          rustup target add "$TARGET"
+      # ring compiles C; the musl target needs a musl C compiler.
+      - name: Install the musl C toolchain
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build and package (Linux, macOS)
+        if: matrix.platform != 'windows'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          ARCHIVE: ${{ matrix.archive }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          cargo build --release --locked --bin riff --target "$TARGET"
+          mkdir -p package
+          install -m 0755 "target/$TARGET/release/riff" package/riff
+          install -m 0644 LICENSE package/LICENSE
+          if [ "$PLATFORM" = linux ]; then
+            needed="$(readelf -d package/riff | grep -c '(NEEDED)' || true)"
+            if [ "$needed" -ne 0 ]; then
+              echo "::error::riff links $needed shared libraries; the Linux archive must be static"
+              exit 1
+            fi
+          fi
+          tar -czf "$ARCHIVE" -C package riff LICENSE
+      - name: Build and package (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+          ARCHIVE: ${{ matrix.archive }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo build --release --locked --bin riff --target $env:TARGET
+          if ($LASTEXITCODE -ne 0) { throw "cargo build failed: $LASTEXITCODE" }
+          New-Item -ItemType Directory -Force package | Out-Null
+          Copy-Item "target/$env:TARGET/release/riff.exe" package/riff.exe
+          Copy-Item LICENSE package/LICENSE
+          Compress-Archive -Path package/riff.exe, package/LICENSE -DestinationPath $env:ARCHIVE -CompressionLevel Optimal
+      # The archive, not the build directory, is what gets tested and shipped.
+      - name: Smoke test the archive (Linux, macOS)
+        if: matrix.platform != 'windows'
+        shell: bash
+        env:
+          ARCHIVE: ${{ matrix.archive }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir smoke
+          tar -xzf "$ARCHIVE" -C smoke
+          export RIFF_HOME="$RUNNER_TEMP/riff-home"
+          test "$(smoke/riff --version)" = "riff ${VERSION%%-*}"
+          smoke/riff init
+          test -f "$RIFF_HOME/config.json"
+      - name: Smoke test the archive (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          ARCHIVE: ${{ matrix.archive }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Expand-Archive -Path $env:ARCHIVE -DestinationPath smoke
+          $env:RIFF_HOME = Join-Path $env:RUNNER_TEMP 'riff-home'
+          $reported = & .\smoke\riff.exe --version
+          if ($LASTEXITCODE -ne 0) { throw "riff.exe --version failed: $LASTEXITCODE" }
+          $expected = "riff " + ($env:VERSION -split '-')[0]
+          if ($reported -ne $expected) { throw "riff.exe --version printed '$reported', expected '$expected'" }
+          & .\smoke\riff.exe init
+          if ($LASTEXITCODE -ne 0) { throw "riff.exe init failed: $LASTEXITCODE" }
+          if (-not (Test-Path (Join-Path $env:RIFF_HOME 'config.json'))) { throw 'riff init wrote no config.json' }
+      - name: Upload the archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-${{ matrix.name }}-${{ needs.version.outputs.version }}
+          path: ${{ matrix.archive }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  assemble:
+    name: Assemble checksums
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Download the archives
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*-${{ needs.version.outputs.version }}
+          path: ${{ runner.temp }}/release-assets
+          merge-multiple: true
+      - name: Generate SHA256SUMS
+        shell: bash
+        working-directory: ${{ runner.temp }}/release-assets
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(riff-*.tar.gz riff-*.zip)
+          [ "${#assets[@]}" -eq 5 ]
+          sha256sum "${assets[@]}" > SHA256SUMS
+          test "$(wc -l < SHA256SUMS)" -eq 5
+          cat SHA256SUMS
+      - name: Upload the assembled assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-assets-${{ needs.version.outputs.version }}
+          path: ${{ runner.temp }}/release-assets
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  publish:
+    name: Publish the GitHub Release
+    needs: [version, assemble]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/riff-v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the assembled assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-assets-${{ needs.version.outputs.version }}
+          path: release-assets
+      - name: Create the GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.version.outputs.tag }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find . -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name 'SHA256SUMS' \) -printf '%f\n' | sort)
+          [ "${#assets[@]}" -eq 6 ]
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            existing="$(gh release view "$TAG" --json assets --jq '.assets | length')"
+            if [ "$existing" -gt 0 ]; then
+              echo "::error::GitHub Release $TAG already has $existing asset(s); refusing to overwrite them"
+              exit 1
+            fi
+            gh release upload "$TAG" "${assets[@]}"
+          elif [ "$PRERELEASE" = true ]; then
+            gh release create "$TAG" "${assets[@]}" --verify-tag --title "$TAG" --generate-notes --prerelease
+          else
+            gh release create "$TAG" "${assets[@]}" --verify-tag --title "$TAG" --generate-notes
+          fi
