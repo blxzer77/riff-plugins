@@ -8,16 +8,23 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 struct Mock {
     origin: String,
     hits: Arc<AtomicUsize>,
     reply: Arc<Mutex<(u16, &'static str)>>,
+    delay: Arc<Mutex<Duration>>,
 }
 
 impl Mock {
     fn reply(&self, status: u16, body: &'static str) {
         *self.reply.lock().unwrap() = (status, body);
+    }
+
+    /// Holds every later answer back, so a caller stays inside its command.
+    fn delay(&self, delay: Duration) {
+        *self.delay.lock().unwrap() = delay;
     }
 }
 
@@ -27,7 +34,8 @@ fn mock(body: &'static str) -> Mock {
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let hits = Arc::new(AtomicUsize::new(0));
     let reply = Arc::new(Mutex::new((200u16, body)));
-    let (counter, current) = (Arc::clone(&hits), Arc::clone(&reply));
+    let delay = Arc::new(Mutex::new(Duration::ZERO));
+    let (counter, current, pause) = (Arc::clone(&hits), Arc::clone(&reply), Arc::clone(&delay));
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };
@@ -45,6 +53,8 @@ fn mock(body: &'static str) -> Mock {
             let mut request_body = vec![0; length];
             let _ = reader.read_exact(&mut request_body);
             counter.fetch_add(1, Ordering::SeqCst);
+            let wait = *pause.lock().unwrap();
+            std::thread::sleep(wait);
             let (status, body) = *current.lock().unwrap();
             let response = format!(
                 "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
@@ -57,6 +67,7 @@ fn mock(body: &'static str) -> Mock {
         origin,
         hits,
         reply,
+        delay,
     }
 }
 
@@ -275,6 +286,51 @@ fn concurrent_processes_in_one_session_never_overspend() {
         })
         .collect::<Vec<_>>();
     let ok = children
+        .into_iter()
+        .map(|mut child| child.wait().unwrap().success())
+        .filter(|ok| *ok)
+        .count();
+    assert_eq!(
+        mock.hits.load(Ordering::SeqCst),
+        2,
+        "the per-session cap is exact"
+    );
+    assert_eq!(ok, 2);
+}
+
+/// Calls that overlap without starting together: the second starts while the
+/// first runs, the third after the first has written its state back but while
+/// the second still runs. Each must see the counts of the ones before it.
+#[test]
+fn staggered_processes_in_one_session_never_overspend() {
+    let mock = mock(RESULTS);
+    mock.delay(Duration::from_millis(300));
+    let home = home("staggered");
+    configure(&home, &mock, "");
+    let spawn = || {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_riff"));
+        command
+            .args(["web", "search", "q", "--session", "c"])
+            .current_dir(&home)
+            .env("RIFF_HOME", &home)
+            .env_remove("RIFF_SESSION")
+            .env_remove("CODEX_SESSION_ID")
+            .env_remove("https_proxy")
+            .env_remove("HTTPS_PROXY")
+            .env_remove("http_proxy")
+            .env_remove("HTTP_PROXY");
+        command
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap()
+    };
+    let first = spawn();
+    std::thread::sleep(Duration::from_millis(80));
+    let second = spawn();
+    std::thread::sleep(Duration::from_millis(370));
+    let third = spawn();
+    let ok = [first, second, third]
         .into_iter()
         .map(|mut child| child.wait().unwrap().success())
         .filter(|ok| *ok)

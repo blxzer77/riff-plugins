@@ -15,6 +15,10 @@
 //! concurrent calls in one session cannot lose each other's counts. Different
 //! sessions run in parallel; they only serialize on `health.json` for the
 //! short load/store, not the command.
+//!
+//! The lock is on a file of its own, `<name>.lock`, never on the data file:
+//! a store replaces the data file (temp file + rename), and a lock on a file
+//! that has been replaced no longer excludes whoever opens the path next.
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -95,38 +99,86 @@ fn short_hash(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// An exclusively locked JSON file. The lock is held until drop.
+/// A JSON file read and written under an exclusive lock. The lock is held
+/// until drop.
 pub struct Locked<T> {
-    file: File,
+    lock: File,
     path: PathBuf,
     pub value: T,
 }
 
-impl<T: Serialize + DeserializeOwned + Default> Locked<T> {
-    /// Opens (creating if needed) and locks `path`. A missing, empty or
-    /// unparsable file yields `T::default()`: state is a cache of counters,
-    /// and a corrupt file must not wedge every later command.
-    pub fn open(path: PathBuf) -> std::io::Result<Self> {
-        if let Some(parent) = path.parent() {
-            crate::home::ensure_private_dir(parent)?;
-        }
-        let file = std::fs::OpenOptions::new()
+/// The file whose lock guards `path`. A store never replaces it, so every
+/// process that locks it locks the same file; only pruning an idle session
+/// removes it, which [`lock_file`] allows for.
+fn lock_path(path: &Path) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(".lock");
+    PathBuf::from(name)
+}
+
+/// Opens (creating if needed) and locks the lock file at `lock_path`.
+///
+/// Pruning may delete the file between this process opening it and locking
+/// it; the lock would then be on a file nobody else can reach, and the next
+/// process would create and lock a new one. So once locked, the path must
+/// still name the file that was locked, or the lock is taken again.
+fn lock_file(lock_path: &Path) -> std::io::Result<File> {
+    const ATTEMPTS: usize = 8;
+    let mut attempt = 0;
+    loop {
+        let lock = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .truncate(false)
-            .open(&path)?;
-        set_private(&path);
-        file.lock()?;
+            .open(lock_path)?;
+        set_private(lock_path);
+        lock.lock()?;
+        attempt += 1;
+        // A file system that cannot answer the question must not stop every
+        // command: after a few tries the lock at hand is used.
+        if is_file_at(&lock, lock_path) || attempt == ATTEMPTS {
+            return Ok(lock);
+        }
+    }
+}
+
+/// Whether `path` still names the open `file`.
+#[cfg(unix)]
+fn is_file_at(file: &File, path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (file.metadata(), std::fs::metadata(path)) {
+        (Ok(open), Ok(named)) => open.dev() == named.dev() && open.ino() == named.ino(),
+        _ => false,
+    }
+}
+
+/// Without a file identity to compare, a path that still exists is the best
+/// available answer.
+#[cfg(not(unix))]
+fn is_file_at(_file: &File, path: &Path) -> bool {
+    path.exists()
+}
+
+impl<T: Serialize + DeserializeOwned + Default> Locked<T> {
+    /// Locks `path` (through its lock file, created if needed) and reads it.
+    /// A missing, empty or unparsable file yields `T::default()`: state is a
+    /// cache of counters, and a corrupt file must not wedge every later
+    /// command.
+    pub fn open(path: PathBuf) -> std::io::Result<Self> {
+        if let Some(parent) = path.parent() {
+            crate::home::ensure_private_dir(parent)?;
+        }
+        let lock = lock_file(&lock_path(&path))?;
         let value = std::fs::read(&path)
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default();
-        Ok(Self { file, path, value })
+        Ok(Self { lock, path, value })
     }
 
-    /// Writes the value back atomically (temp file + rename) while still
-    /// holding the lock on the original path.
+    /// Writes the value back atomically (temp file + rename); the lock stays
+    /// held.
     pub fn store(&self) -> std::io::Result<()> {
         let bytes = serde_json::to_vec(&self.value).map_err(std::io::Error::other)?;
         let temp = self
@@ -140,7 +192,7 @@ impl<T: Serialize + DeserializeOwned + Default> Locked<T> {
 
 impl<T> Drop for Locked<T> {
     fn drop(&mut self) {
-        let _ = self.file.unlock();
+        let _ = self.lock.unlock();
     }
 }
 
@@ -366,24 +418,49 @@ fn merge_by_key<T, K: PartialEq>(
     merged
 }
 
-/// Deletes session files older than [`SESSION_RETENTION`]. Best effort; never
-/// touches the current session.
+/// Deletes session files older than [`SESSION_RETENTION`], each together with
+/// its lock file. Best effort; never touches the current session, nor one
+/// whose lock is held (a command of that session is running).
 fn prune_sessions(dir: &Path, current: &str) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
     let cutoff = SystemTime::now() - SESSION_RETENTION;
+    let is_old = |path: &Path| {
+        std::fs::metadata(path)
+            .and_then(|m| m.modified())
+            .is_ok_and(|modified| modified < cutoff)
+    };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.file_stem().and_then(|s| s.to_str()) == Some(current) {
+        let is_lock = path.extension().is_some_and(|ext| ext == "lock");
+        // A lock file goes with its data file; alone (its command never
+        // stored) it is judged by its own age.
+        let data = if is_lock {
+            path.with_extension("")
+        } else {
+            path.clone()
+        };
+        if data.file_stem().and_then(|s| s.to_str()) == Some(current) {
             continue;
         }
-        let old = entry
-            .metadata()
-            .and_then(|m| m.modified())
-            .is_ok_and(|modified| modified < cutoff);
-        if old {
-            let _ = std::fs::remove_file(path);
+        if is_lock && data.exists() {
+            continue;
+        }
+        if !is_old(&path) {
+            continue;
+        }
+        let lock_path = lock_path(&data);
+        match File::open(&lock_path) {
+            Ok(lock) => {
+                if lock.try_lock().is_ok() {
+                    let _ = std::fs::remove_file(&data);
+                    let _ = std::fs::remove_file(&lock_path);
+                }
+            }
+            Err(_) => {
+                let _ = std::fs::remove_file(&data);
+            }
         }
     }
 }
@@ -457,10 +534,97 @@ mod tests {
         let dir = crate::test_env::scratch_dir("state-lock");
         let path = dir.join("x.json");
         let held = Locked::<SessionState>::open(path.clone()).unwrap();
-        let other = File::open(&path).unwrap();
+        let other = File::open(lock_path(&path)).unwrap();
         assert!(other.try_lock().is_err());
         drop(held);
         assert!(other.try_lock().is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_lock_file_that_was_deleted_or_recreated_is_no_longer_the_one_at_its_path() {
+        let dir = crate::test_env::scratch_dir("state-lock-identity");
+        let path = dir.join("x.json.lock");
+        let open = lock_file(&path).unwrap();
+        assert!(is_file_at(&open, &path));
+        std::fs::remove_file(&path).unwrap();
+        assert!(!is_file_at(&open, &path), "deleted");
+        std::fs::write(&path, b"").unwrap();
+        assert!(
+            !is_file_at(&open, &path),
+            "another file under the same name"
+        );
+        // Taking the lock again reaches the file that is there now.
+        let again = lock_file(&path).unwrap();
+        assert!(is_file_at(&again, &path));
+    }
+
+    #[test]
+    fn a_store_does_not_let_a_second_holder_in() {
+        use std::sync::mpsc;
+        let dir = crate::test_env::scratch_dir("state-lock-store");
+        let path = dir.join("x.json");
+        let held = Locked::<SessionState>::open(path.clone()).unwrap();
+        held.store().unwrap();
+        let (entered, waiting) = mpsc::channel();
+        let waiter = std::thread::spawn(move || {
+            let second = Locked::<SessionState>::open(path).unwrap();
+            entered.send(()).unwrap();
+            drop(second);
+        });
+        assert!(
+            waiting.recv_timeout(Duration::from_millis(200)).is_err(),
+            "a second holder got the lock while the first still held it"
+        );
+        drop(held);
+        waiting
+            .recv_timeout(Duration::from_secs(30))
+            .expect("the waiter gets the lock once the holder drops");
+        waiter.join().unwrap();
+    }
+
+    #[test]
+    fn old_sessions_are_pruned_with_their_locks_unless_current_or_running() {
+        let dir = crate::test_env::scratch_dir("state-prune");
+        let data = |name: &str| dir.join(format!("{name}.json"));
+        let old = SystemTime::now() - SESSION_RETENTION - Duration::from_secs(60);
+        let age = |path: &Path| {
+            let file = File::options().write(true).open(path).unwrap();
+            file.set_modified(old).unwrap();
+        };
+        for name in ["s-idle", "s-running", "s-current", "s-fresh"] {
+            let locked = Locked::<SessionState>::open(data(name)).unwrap();
+            locked.store().unwrap();
+        }
+        for name in ["s-idle", "s-running", "s-current"] {
+            age(&data(name));
+            age(&lock_path(&data(name)));
+        }
+        // A command that died before its first store leaves only a lock file.
+        let orphan = lock_path(&data("s-orphan"));
+        std::fs::write(&orphan, b"").unwrap();
+        age(&orphan);
+
+        let running = Locked::<SessionState>::open(data("s-running")).unwrap();
+        prune_sessions(&dir, "s-current");
+        drop(running);
+
+        let mut left = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect::<Vec<_>>();
+        left.sort();
+        assert_eq!(
+            left,
+            [
+                "s-current.json",
+                "s-current.json.lock",
+                "s-fresh.json",
+                "s-fresh.json.lock",
+                "s-running.json",
+                "s-running.json.lock",
+            ]
+        );
     }
 
     #[test]
