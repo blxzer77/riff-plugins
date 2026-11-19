@@ -35,6 +35,17 @@ impl Agent {
             Self::Antigravity => "antigravity",
         }
     }
+
+    /// The `--max-bytes` to suggest, for a host that keeps less command
+    /// output than riff prints by default (design 6.2). Antigravity's limit
+    /// is undocumented; `run_command` was reported to keep 8,192 bytes
+    /// (agy 1.2.16), so stay under that until a real session says otherwise.
+    fn max_output_bytes(self) -> Option<usize> {
+        match self {
+            Self::ClaudeCode => None,
+            Self::Antigravity => Some(8_000),
+        }
+    }
 }
 
 /// A built-in web call, in riff terms.
@@ -150,6 +161,9 @@ pub fn riff_command(call: &WebCall, agent: Agent, session: Option<&str>) -> Stri
                 words.push(format!("--session {}", quote(session)));
             }
             words.push(format!("--agent {}", agent.name()));
+            if let Some(bytes) = agent.max_output_bytes() {
+                words.push(format!("--max-bytes {bytes}"));
+            }
             // Last, after `--`, so a query starting with `-` is not an option.
             words.push("--".to_string());
             words.push(quote(query));
@@ -167,6 +181,9 @@ pub fn riff_command(call: &WebCall, agent: Agent, session: Option<&str>) -> Stri
                 words.push(format!("--session {}", quote(session)));
             }
             words.push(format!("--agent {}", agent.name()));
+            if let Some(bytes) = agent.max_output_bytes() {
+                words.push(format!("--max-bytes {bytes}"));
+            }
         }
     }
     words.join(" ")
@@ -648,13 +665,45 @@ mod tests {
         let command = riff_command(&fetch, Agent::Antigravity, None);
         assert_eq!(
             command,
-            "riff web fetch 'https://e.com/a?x=1&y=2' --range 50- --query 'pin a version' --agent antigravity"
+            "riff web fetch 'https://e.com/a?x=1&y=2' --range 50- --query 'pin a version' --agent antigravity --max-bytes 8000"
         );
         assert!(matches!(
             reparse(&command),
             super::super::web::Command::Fetch { url, query: Some(q), range: Some(_) }
                 if url == "https://e.com/a?x=1&y=2" && q == "pin a version"
         ));
+    }
+
+    #[test]
+    fn only_a_host_that_cuts_output_short_gets_a_byte_cap() {
+        let search = WebCall::Search {
+            query: "-q".into(),
+            allowed: Vec::new(),
+            blocked: Vec::new(),
+        };
+        let fetch = WebCall::Fetch {
+            url: "https://e.com/".into(),
+            query: None,
+            offset: None,
+        };
+        // The cap comes before `--`, or it would be read as a query word.
+        assert_eq!(
+            riff_command(&search, Agent::Antigravity, None),
+            "riff web search --agent antigravity --max-bytes 8000 -- -q"
+        );
+        assert_eq!(
+            riff_command(&search, Agent::ClaudeCode, None),
+            "riff web search --agent claude-code -- -q"
+        );
+        assert_eq!(
+            riff_command(&fetch, Agent::ClaudeCode, None),
+            "riff web fetch https://e.com/ --agent claude-code"
+        );
+        let capped = riff_command(&fetch, Agent::Antigravity, None);
+        match super::super::web::parse(&shell_words(&capped)[2..]).unwrap() {
+            super::super::web::Parsed::Run(invocation) => assert_eq!(invocation.max_bytes, 8_000),
+            other => panic!("{other:?}"),
+        }
     }
 
     fn configure(home: &TempHome, config: &str, keys: &[&str]) {

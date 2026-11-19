@@ -16,8 +16,14 @@ use crate::web::read_page::{Origin, PageRead, ReadError};
 use crate::web::search::{SearchError, SearchOutcome};
 use crate::web::snapshot::RangeSpec;
 
-/// One stdout write stays under this many bytes.
+/// One stdout write stays under this many bytes; `--max-bytes` lowers it for
+/// a host that cuts command output shorter (design 6.2).
 pub(crate) const MAX_OUTPUT_BYTES: usize = 30_000;
+/// A floor that leaves room for page text after the header, the
+/// `<web_content>` wrapper and the continuation command of an ordinary URL.
+/// Those grow with the URL, so a long one can still need more: `render_fetch`
+/// refuses rather than print a segment that makes no progress.
+const MIN_OUTPUT_BYTES: usize = 2_000;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_TIMEOUT_SECS: f64 = 600.0;
 const DEFAULT_LIMIT: usize = 8;
@@ -43,6 +49,8 @@ Commands:
 Options:
       --json             Print JSON instead of Markdown
       --timeout <secs>   Total time limit in seconds (default 15)
+      --max-bytes <n>    Keep stdout under n bytes, 2000-30000 (default 30000);
+                         for a host that cuts command output shorter
       --limit <n>        search: maximum results, 1-20 (default 8)
       --allow-domain <d> search: only results from this domain (repeatable)
       --block-domain <d> search: never results from this domain (repeatable)
@@ -82,6 +90,7 @@ pub(crate) struct Invocation {
     pub command: Command,
     pub json: bool,
     pub timeout: Duration,
+    pub max_bytes: usize,
     pub session: Option<String>,
     pub agent: Option<String>,
 }
@@ -122,6 +131,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, String> {
     let mut json = false;
     let mut help = false;
     let mut timeout = DEFAULT_TIMEOUT;
+    let mut max_bytes = None;
     let mut limit = None;
     let mut range = None;
     let mut query = None;
@@ -158,6 +168,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, String> {
             "-h" | "--help" if inline.is_none() => help = true,
             "--json" if inline.is_none() => json = true,
             "--timeout" => timeout = parse_timeout(&value()?)?,
+            "--max-bytes" => max_bytes = Some(parse_max_bytes(&value()?)?),
             "--limit" => limit = Some(parse_limit(&value()?)?),
             "--range" => range = Some(parse_range(&value()?)?),
             "--query" => query = Some(non_empty("--query", value()?)?),
@@ -213,7 +224,8 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, String> {
             if let Some(extra) = positional.next() {
                 return Err(format!("unexpected argument `{extra}`"));
             }
-            if limit.is_some() || range.is_some() || query.is_some() || json {
+            if limit.is_some() || range.is_some() || query.is_some() || max_bytes.is_some() || json
+            {
                 return Err("`reset` takes only --session".to_string());
             }
             Command::Reset
@@ -231,6 +243,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, String> {
         command,
         json,
         timeout,
+        max_bytes: max_bytes.unwrap_or(MAX_OUTPUT_BYTES),
         session,
         agent,
     }))
@@ -266,6 +279,16 @@ fn parse_timeout(raw: &str) -> Result<Duration, String> {
         }
         _ => Err(format!(
             "invalid --timeout `{raw}`: expected seconds in (0, {MAX_TIMEOUT_SECS}]"
+        )),
+    }
+}
+
+/// A larger value than the built-in cap means the built-in cap.
+fn parse_max_bytes(raw: &str) -> Result<usize, String> {
+    match raw.parse::<usize>() {
+        Ok(bytes) if bytes >= MIN_OUTPUT_BYTES => Ok(bytes.min(MAX_OUTPUT_BYTES)),
+        _ => Err(format!(
+            "invalid --max-bytes `{raw}`: expected {MIN_OUTPUT_BYTES}-{MAX_OUTPUT_BYTES}"
         )),
     }
 }
@@ -394,6 +417,13 @@ pub fn run(args: &[String]) -> i32 {
     }
 }
 
+/// How a result is printed.
+#[derive(Clone, Copy)]
+struct Format {
+    json: bool,
+    max_bytes: usize,
+}
+
 /// Runs one invocation under its total timeout and returns the stdout text.
 /// `test_config` is the loopback-mock seam; production passes `None`.
 pub(crate) async fn execute(
@@ -402,6 +432,10 @@ pub(crate) async fn execute(
     test_config: Option<crate::web::fetcher::FetchConfig>,
 ) -> Result<String, Failure> {
     let abort = AbortController::default();
+    let format = Format {
+        json: invocation.json,
+        max_bytes: invocation.max_bytes,
+    };
     let work = async {
         match &invocation.command {
             Command::Search {
@@ -417,7 +451,7 @@ pub(crate) async fn execute(
                     blocked_domains,
                     web,
                     &abort,
-                    invocation.json,
+                    format,
                 )
                 .await
             }
@@ -429,7 +463,7 @@ pub(crate) async fn execute(
                     web,
                     &abort,
                     test_config,
-                    invocation.json,
+                    format,
                 )
                 .await
             }
@@ -458,7 +492,7 @@ async fn search(
     blocked_domains: &[String],
     web: &WebSettings,
     abort: &AbortController,
-    json: bool,
+    format: Format,
 ) -> Result<String, Failure> {
     let rerank = crate::web::rerank_client(web);
     let outcome = crate::web::search::search(
@@ -472,7 +506,12 @@ async fn search(
     )
     .await
     .map_err(search_failure)?;
-    Ok(render_search(query, &outcome, json))
+    Ok(render_search(
+        query,
+        &outcome,
+        format.json,
+        format.max_bytes,
+    ))
 }
 
 fn search_failure(error: SearchError) -> Failure {
@@ -489,24 +528,34 @@ fn search_failure(error: SearchError) -> Failure {
     Failure::new(code, message)
 }
 
-/// Drops trailing hits until the rendering fits [`MAX_OUTPUT_BYTES`].
-pub(crate) fn render_search(query: &str, outcome: &SearchOutcome, json: bool) -> String {
+/// Drops trailing hits until the rendering fits `max_bytes`.
+pub(crate) fn render_search(
+    query: &str,
+    outcome: &SearchOutcome,
+    json: bool,
+    max_bytes: usize,
+) -> String {
     let mut shown = outcome.hits.len();
     loop {
         let omitted = outcome.hits.len() - shown;
         let output = if json {
             search_json(query, outcome, shown, omitted)
         } else {
-            search_markdown(outcome, shown, omitted)
+            search_markdown(outcome, shown, omitted, max_bytes)
         };
-        if output.len() <= MAX_OUTPUT_BYTES || shown == 0 {
+        if output.len() <= max_bytes || shown == 0 {
             return output;
         }
         shown -= 1;
     }
 }
 
-fn search_markdown(outcome: &SearchOutcome, shown: usize, omitted: usize) -> String {
+fn search_markdown(
+    outcome: &SearchOutcome,
+    shown: usize,
+    omitted: usize,
+    max_bytes: usize,
+) -> String {
     let mut output = String::new();
     if outcome.hits.is_empty() {
         output.push_str("No results found.\n");
@@ -534,7 +583,7 @@ fn search_markdown(outcome: &SearchOutcome, shown: usize, omitted: usize) -> Str
     }
     if omitted > 0 {
         output.push_str(&format!(
-            "[{omitted} more results omitted to stay under {MAX_OUTPUT_BYTES} bytes]\n"
+            "[{omitted} more results omitted to stay under {max_bytes} bytes]\n"
         ));
     }
     output.push_str(&format!("[searched: {}", outcome.providers_used.join(", ")));
@@ -603,7 +652,7 @@ async fn fetch(
     web: &WebSettings,
     abort: &AbortController,
     test_config: Option<crate::web::fetcher::FetchConfig>,
-    json: bool,
+    format: Format,
 ) -> Result<String, Failure> {
     let mut page = crate::web::read_page::read_page(url, range, web, abort, test_config)
         .await
@@ -615,7 +664,7 @@ async fn fetch(
     if let Some(query) = query {
         page.next_hint = page_hint(query, &page, abort).await;
     }
-    Ok(render_fetch(url, &page, json))
+    render_fetch(url, &page, format.json, format.max_bytes)
 }
 
 /// `web.page_answers` (decision-provider 4.2): only after a fresh fetch, so a
@@ -671,22 +720,40 @@ fn read_failure(error: ReadError) -> Failure {
 
 /// Renders one segment. The segment is `maxReturnChars` long at most (the
 /// WebFetch tool's cap) and shrinks further until the whole output fits
-/// [`MAX_OUTPUT_BYTES`]; the continuation always starts where it ended.
-pub(crate) fn render_fetch(url: &str, page: &PageRead, json: bool) -> String {
+/// `max_bytes`; the continuation always starts where it ended.
+///
+/// The header and the continuation command repeat the URL, so with a long
+/// URL and a low cap there may be no room for any text. That is an error, not
+/// an empty segment: its continuation would name the same position again.
+pub(crate) fn render_fetch(
+    url: &str,
+    page: &PageRead,
+    json: bool,
+    max_bytes: usize,
+) -> Result<String, Failure> {
     let chars = page.selected.text.chars().collect::<Vec<_>>();
     let mut len = chars.len();
     loop {
         let body = chars[..len].iter().collect::<String>();
         let end = page.selected.start + len;
         let output = if json {
-            fetch_json(url, page, &body, end)
+            fetch_json(url, page, &body, end, max_bytes)
         } else {
-            fetch_markdown(url, page, &body, end)
+            fetch_markdown(url, page, &body, end, max_bytes)
         };
-        if output.len() <= MAX_OUTPUT_BYTES || len == 0 {
-            return output;
+        if output.len() <= max_bytes && (len > 0 || chars.is_empty()) {
+            return Ok(output);
         }
-        let scaled = (len as u128 * MAX_OUTPUT_BYTES as u128 / output.len() as u128) as usize;
+        if len == 0 {
+            return Err(Failure::new(
+                exit::USAGE,
+                format!(
+                    "max_bytes_too_small: the header and continuation command for this URL take {} bytes, leaving no room for page text under {max_bytes}",
+                    output.len()
+                ),
+            ));
+        }
+        let scaled = (len as u128 * max_bytes as u128 / output.len() as u128) as usize;
         len = scaled.min(len - 1);
     }
 }
@@ -699,16 +766,23 @@ fn origin_name(origin: Origin) -> &'static str {
     }
 }
 
-/// `riff web fetch <url> --range <end>-`, shell-quoted for `bash -c`.
-pub(crate) fn next_command(url: &str, end: usize, json: bool) -> String {
-    format!(
-        "riff web fetch {} --range {end}-{}",
-        crate::runtime::shell_quote(url),
-        if json { " --json" } else { "" }
-    )
+/// `riff web fetch <url> --range <end>-`, shell-quoted for `bash -c`. A cap
+/// below the default is repeated: the next segment goes through the same host.
+pub(crate) fn next_command(url: &str, end: usize, json: bool, max_bytes: usize) -> String {
+    let mut command = format!(
+        "riff web fetch {} --range {end}-",
+        crate::runtime::shell_quote(url)
+    );
+    if max_bytes < MAX_OUTPUT_BYTES {
+        command.push_str(&format!(" --max-bytes {max_bytes}"));
+    }
+    if json {
+        command.push_str(" --json");
+    }
+    command
 }
 
-fn fetch_markdown(url: &str, page: &PageRead, body: &str, end: usize) -> String {
+fn fetch_markdown(url: &str, page: &PageRead, body: &str, end: usize, max_bytes: usize) -> String {
     let metadata = &page.snapshot.metadata;
     let total = page.selected.total;
     let mut output = format!(
@@ -736,7 +810,7 @@ fn fetch_markdown(url: &str, page: &PageRead, body: &str, end: usize) -> String 
     if end < total {
         output.push_str(&format!(
             "[next segment: {}]\n",
-            next_command(url, end, false)
+            next_command(url, end, false, max_bytes)
         ));
     } else {
         output.push_str("[end of page]\n");
@@ -749,13 +823,13 @@ fn fetch_markdown(url: &str, page: &PageRead, body: &str, end: usize) -> String 
     output
 }
 
-fn fetch_json(url: &str, page: &PageRead, body: &str, end: usize) -> String {
+fn fetch_json(url: &str, page: &PageRead, body: &str, end: usize, max_bytes: usize) -> String {
     let metadata = &page.snapshot.metadata;
     let total = page.selected.total;
     let next = (end < total).then(|| {
         json!({
             "range": format!("{end}-"),
-            "command": next_command(url, end, true),
+            "command": next_command(url, end, true, max_bytes),
         })
     });
     let value = json!({
@@ -819,10 +893,32 @@ mod tests {
                 },
                 json: false,
                 timeout: Duration::from_secs(15),
+                max_bytes: MAX_OUTPUT_BYTES,
                 session: None,
                 agent: None,
             }
         );
+    }
+
+    #[test]
+    fn max_bytes_lowers_the_cap_and_never_raises_it() {
+        assert_eq!(
+            run_of(&["search", "q", "--max-bytes", "8000"]).max_bytes,
+            8_000
+        );
+        assert_eq!(
+            run_of(&["fetch", "https://e.com/", "--max-bytes=2000"]).max_bytes,
+            2_000
+        );
+        assert_eq!(
+            run_of(&["search", "q", "--max-bytes", "64000"]).max_bytes,
+            MAX_OUTPUT_BYTES
+        );
+        for bad in ["1999", "0", "-1", "8k", ""] {
+            let error = parse(&args(&["search", "q", "--max-bytes", bad])).unwrap_err();
+            assert!(error.contains("expected 2000-30000"), "{bad}: {error}");
+        }
+        assert!(parse(&args(&["reset", "--max-bytes", "8000"])).is_err());
     }
 
     #[test]
@@ -1052,20 +1148,25 @@ mod tests {
 
     #[test]
     fn search_markdown_lists_title_url_sources_and_snippet() {
-        let rendered = render_search("q", &outcome(vec![hit(1, "first"), hit(2, "")]), false);
+        let rendered = render_search(
+            "q",
+            &outcome(vec![hit(1, "first"), hit(2, "")]),
+            false,
+            MAX_OUTPUT_BYTES,
+        );
         assert_eq!(
             rendered,
             "1. **Title 1**\n   https://example.com/1\n   sources: exa, tavily · published 2026-08-01 · likely answers\n   first\n\n\
              2. **Title 2**\n   https://example.com/2\n   sources: exa, tavily\n\n\
              [searched: exa, tavily — failed: brave rate_limited (cooling down)]\n"
         );
-        let empty = render_search("q", &outcome(Vec::new()), false);
+        let empty = render_search("q", &outcome(Vec::new()), false, MAX_OUTPUT_BYTES);
         assert!(empty.starts_with("No results found.\n"), "{empty}");
     }
 
     #[test]
     fn search_json_has_results_and_provider_status() {
-        let rendered = render_search("q", &outcome(vec![hit(1, "first")]), true);
+        let rendered = render_search("q", &outcome(vec![hit(1, "first")]), true, MAX_OUTPUT_BYTES);
         assert!(rendered.ends_with('\n'));
         let value: Value = serde_json::from_str(&rendered).unwrap();
         assert_eq!(value["query"], "q");
@@ -1093,7 +1194,7 @@ mod tests {
         let big = "x".repeat(4_000);
         let hits = (1..=20).map(|index| hit(index, &big)).collect::<Vec<_>>();
         for json in [false, true] {
-            let rendered = render_search("q", &outcome(hits.clone()), json);
+            let rendered = render_search("q", &outcome(hits.clone()), json, MAX_OUTPUT_BYTES);
             assert!(rendered.len() <= MAX_OUTPUT_BYTES, "{}", rendered.len());
             if json {
                 let value: Value = serde_json::from_str(&rendered).unwrap();
@@ -1106,6 +1207,24 @@ mod tests {
                 assert!(rendered.contains("more results omitted"), "{rendered}");
             }
         }
+    }
+
+    #[test]
+    fn a_lower_cap_drops_more_hits_and_names_itself() {
+        let big = "x".repeat(4_000);
+        let hits = (1..=20).map(|index| hit(index, &big)).collect::<Vec<_>>();
+        let rendered = render_search("q", &outcome(hits.clone()), false, 9_000);
+        assert!(rendered.len() <= 9_000, "{}", rendered.len());
+        assert!(rendered.contains("2. **Title 2**"), "two 4 KB hits fit");
+        assert!(!rendered.contains("Title 3"));
+        assert!(
+            rendered.contains("[18 more results omitted to stay under 9000 bytes]"),
+            "{rendered}"
+        );
+        let json = render_search("q", &outcome(hits), true, 9_000);
+        assert!(json.len() <= 9_000, "{}", json.len());
+        let value: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["omitted"], 18);
     }
 
     // ── against local mocks ────────────────────────────────────
@@ -1261,6 +1380,94 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_lower_cap_shortens_each_segment_and_its_continuations_keep_the_cap() {
+        let web = settings(json!({"maxReturnChars": 20000, "fetchFallback": []}));
+        let _env = env("max-bytes", &web);
+        let text = (0..3_000)
+            .map(|index| format!("line {index:04}\n"))
+            .collect::<String>();
+        let server = serve(vec![("/long", Route::text(&text))]).await;
+        let url = server.url("/long");
+
+        // Follow the printed continuation commands to the end of the page.
+        let mut words = vec![
+            "fetch".to_string(),
+            url.clone(),
+            "--max-bytes".to_string(),
+            "8000".to_string(),
+        ];
+        let mut read = String::new();
+        let mut segments = 0;
+        loop {
+            let refs = words.iter().map(String::as_str).collect::<Vec<_>>();
+            let output = exec(&refs, &web).await.unwrap();
+            assert!(output.len() <= 8_000, "{}", output.len());
+            let open = output.find("\">\n").unwrap() + 3;
+            let close = output.rfind("\n</web_content>").unwrap();
+            read.push_str(&output[open..close]);
+            segments += 1;
+            let Some(at) = output.rfind("[next segment: riff web ") else {
+                assert!(output.contains("[end of page]"), "{output}");
+                break;
+            };
+            let command = output[at..].lines().next().unwrap();
+            let command = command
+                .strip_prefix("[next segment: riff web ")
+                .and_then(|rest| rest.strip_suffix(']'))
+                .unwrap();
+            assert!(command.ends_with(" --max-bytes 8000"), "{command}");
+            // The mock URL has no shell metacharacters, so it is not quoted.
+            words = command.split(' ').map(str::to_string).collect();
+        }
+        assert_eq!(read.trim_end(), text.trim_end());
+        assert!(
+            segments >= 4,
+            "{segments} segments for {} bytes",
+            text.len()
+        );
+
+        let json = exec(&["fetch", &url, "--json", "--max-bytes", "8000"], &web)
+            .await
+            .unwrap();
+        assert!(json.len() <= 8_000, "{}", json.len());
+        let value: Value = serde_json::from_str(&json).unwrap();
+        let command = value["next"]["command"].as_str().unwrap();
+        assert!(command.ends_with(" --max-bytes 8000 --json"), "{command}");
+    }
+
+    #[tokio::test]
+    async fn a_cap_with_no_room_for_text_is_refused_instead_of_looping() {
+        let web = settings(json!({"fetchFallback": []}));
+        let _env = env("max-bytes-url", &web);
+        // The URL is printed three times: header, wrapper, continuation.
+        // (`serve` takes `'static` route paths.)
+        let path: &'static str = Box::leak(format!("/{}", "a".repeat(700)).into_boxed_str());
+        let server = serve(vec![(path, Route::text(&page_text()))]).await;
+        let url = server.url(path);
+
+        for json in [false, true] {
+            let mut words = vec!["fetch", url.as_str(), "--max-bytes", "2000"];
+            if json {
+                words.push("--json");
+            }
+            let refused = exec(&words, &web).await.unwrap_err();
+            assert_eq!(refused.code, exit::USAGE);
+            assert!(
+                refused.message.starts_with("max_bytes_too_small: "),
+                "{}",
+                refused.message
+            );
+        }
+
+        // With room for text the same page reads, and the segment advances.
+        let output = exec(&["fetch", &url, "--max-bytes", "4000"], &web)
+            .await
+            .unwrap();
+        assert!(output.len() <= 4_000, "{}", output.len());
+        assert!(!output.contains("[chars 0–0 of"), "{output}");
+    }
+
+    #[tokio::test]
     async fn fetch_failures_have_distinct_exit_codes_and_reasons() {
         let web = settings(json!({"fetchFallback": []}));
         let _env = env("errors", &web);
@@ -1391,12 +1598,16 @@ mod tests {
     #[test]
     fn the_next_command_is_shell_quoted() {
         assert_eq!(
-            next_command("https://e.com/a?b=1&c='x'", 40, false),
+            next_command("https://e.com/a?b=1&c='x'", 40, false, MAX_OUTPUT_BYTES),
             "riff web fetch 'https://e.com/a?b=1&c='\\''x'\\''' --range 40-"
         );
         assert_eq!(
-            next_command("https://e.com/a", 7, true),
+            next_command("https://e.com/a", 7, true, MAX_OUTPUT_BYTES),
             "riff web fetch https://e.com/a --range 7- --json"
+        );
+        assert_eq!(
+            next_command("https://e.com/a", 7, true, 8_000),
+            "riff web fetch https://e.com/a --range 7- --max-bytes 8000 --json"
         );
     }
 }

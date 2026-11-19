@@ -37,6 +37,19 @@ skills.
 Without either, the model has no instructions to use `riff` and the built-in
 tool is off, so the agent loses the web. Install one of them first.
 
+## Output size
+
+Codex keeps a command's output up to the model's truncation budget and cuts the
+middle out of anything longer. For every model in Codex's catalog that budget
+is 10,000 tokens, counted as 40,000 bytes, so riff's 30,000-byte output arrives
+whole (codex-rs rust-v0.170.0, checked 2026-11-19). Two cases lower it: a model
+name Codex does not know falls back to 10,000 bytes, and `tool_output_token_limit`
+in `config.toml` sets it directly. In either case ask riff for less:
+
+```bash
+riff web fetch <url> --max-bytes 8000   # the continuation command keeps the cap
+```
+
 ## Check
 
 ```bash
