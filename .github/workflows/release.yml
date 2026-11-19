@@ -307,8 +307,10 @@ jobs:
               exit 1
             fi
             gh release upload "$TAG" "${assets[@]}"
+          # --latest=false: the repository's "Latest" release stays with the
+          # skills line (plain vX.Y.Z); the installers look for riff-v tags.
           elif [ "$PRERELEASE" = true ]; then
-            gh release create "$TAG" "${assets[@]}" --verify-tag --title "$TAG" --generate-notes --prerelease
+            gh release create "$TAG" "${assets[@]}" --verify-tag --title "$TAG" --generate-notes --latest=false --prerelease
           else
-            gh release create "$TAG" "${assets[@]}" --verify-tag --title "$TAG" --generate-notes
+            gh release create "$TAG" "${assets[@]}" --verify-tag --title "$TAG" --generate-notes --latest=false
           fi
