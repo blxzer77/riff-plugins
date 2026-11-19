@@ -1,5 +1,6 @@
 //! `riff` command-line entry point.
 
+pub mod decisions;
 pub mod hook;
 pub mod setup;
 pub mod web;

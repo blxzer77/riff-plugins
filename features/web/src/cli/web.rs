@@ -34,6 +34,7 @@ Usage: riff web search <query...> [options]
        riff web fetch <url> [options]
        riff web reset [--session <id>]
        riff web doctor
+       riff web decisions [--point <name>]
 
 Web search and verbatim page fetch, configured by $RIFF_HOME/config.json
 (default ~/.riff; providers, decision, rerank, key files) and the proxy
@@ -45,6 +46,7 @@ Commands:
                       The output ends with the exact command for the next segment.
   reset               Clear this session's budgets and every provider cooldown
   doctor              Report configuration, keys, proxy and cooldowns
+  decisions           Summarize the decision log per point (riff web decisions --help)
 
 Options:
       --json             Print JSON instead of Markdown
@@ -323,6 +325,9 @@ pub fn run(args: &[String]) -> i32 {
             return exit::USAGE;
         }
         return super::setup::doctor();
+    }
+    if args.first().map(String::as_str) == Some("decisions") {
+        return super::decisions::run(&args[1..]);
     }
     let invocation = match parse(args) {
         Ok(Parsed::Help) => {
