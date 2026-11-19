@@ -1,6 +1,6 @@
 //! Decision Provider seams for WebSearch / WebFetch (decision-provider 4.2).
 //!
-//! @nyan: every function here is additive. A decision can add a provider
+//! every function here is additive. A decision can add a provider
 //! parameter, move likely answers to the front, append a hint, or ask for one
 //! more fetch provider. None can remove a provider, delete a result, rewrite a
 //! page, or turn a failed fetch into a success. Any fallback (disabled, down,
@@ -17,11 +17,11 @@ use serde_json::{Value, json};
 
 use super::providers::QueryKind;
 use super::search::SearchHit;
-use crate::services::decision::{
+use crate::decision::{
     Answer, DecisionOutcome, DecisionPoint, DecisionProvider, NOUL_THRESHOLD, Question, SafeAnswer,
     SafeSet, probe,
 };
-use crate::tool::AbortController;
+use crate::runtime::AbortController;
 
 /// `web.page_answers` reads the first 8000 chars (decision-provider 4.2).
 const PAGE_CHARS: usize = 8000;
@@ -47,28 +47,25 @@ const KIND_OPTIONS: [(&str, &str); 4] = [
     ("general", "None of the above"),
 ];
 
-/// The process Decision Provider for the current settings. `None` only when
-/// there is no `nyan` block at all; a disabled or unreachable backend is the
+/// The process Decision Provider for the current configuration. `None` only
+/// when no configuration is loaded; a disabled or unreachable backend is the
 /// provider's own fallback, not an absence.
 pub fn provider() -> Option<std::sync::Arc<DecisionProvider>> {
     #[cfg(test)]
     if let Some(provider) = test_override::get() {
         return Some(provider);
     }
-    let settings = crate::utils::settings::get_initial_settings();
-    settings
-        .nyan
-        .as_ref()
-        .map(|nyan| std::sync::Arc::new(DecisionProvider::from_nyan(nyan)))
+    crate::runtime::config()
+        .map(|config| std::sync::Arc::new(DecisionProvider::from_config(config.decision.clone())))
 }
 
-/// @nyan: tests cannot reach the real backend (no key, no network), so tool
+/// tests cannot reach the real backend (no key, no network), so tool
 /// tests install a scripted provider here. Production builds have no such hook.
 #[cfg(test)]
 pub(crate) mod test_override {
     use std::sync::{Mutex, OnceLock};
 
-    use crate::services::decision::DecisionProvider;
+    use crate::decision::DecisionProvider;
 
     fn cell() -> &'static Mutex<Option<std::sync::Arc<DecisionProvider>>> {
         static CELL: OnceLock<Mutex<Option<std::sync::Arc<DecisionProvider>>>> = OnceLock::new();
@@ -114,22 +111,22 @@ impl<'a> WebDecisions<'a> {
         let outcome = match tokio::time::timeout(limit, request).await {
             Ok(outcome) => outcome,
             Err(_) => {
-                crate::utils::debug::log_for_debugging(&format!(
+                crate::runtime::log_for_debugging(&format!(
                     "web decision {}: outer guard expired, using the deterministic path",
                     point.as_str()
                 ));
                 DecisionOutcome::Fallback {
-                    reason: crate::services::decision::FallbackReason::Timeout,
-                    receipt: crate::services::decision::Receipt::empty(
+                    reason: crate::decision::FallbackReason::Timeout,
+                    receipt: crate::decision::Receipt::empty(
                         point,
-                        crate::services::decision::digest_state(&Value::Null),
+                        crate::decision::digest_state(&Value::Null),
                     ),
                 }
             }
         };
         // Every Web point shares this choke point, so logging here covers
         // query_kind, answers, prune (shadow), page_answers and fetch_fallback.
-        crate::services::decision::log::log_outcome(point, &outcome);
+        crate::decision::log::log_outcome(point, &outcome);
         outcome
     }
 
@@ -202,7 +199,7 @@ impl<'a> WebDecisions<'a> {
                 |answer| matches!(answer, Answer::Noul { probability } if *probability < max_prob),
             )
             .count();
-        crate::utils::debug::log_for_debugging(&format!(
+        crate::runtime::log_for_debugging(&format!(
             "web.prune (shadow, not applied): {} {would_drop} of {count} candidate(s) below P={max_prob}",
             outcome
                 .fallback_reason()
@@ -290,7 +287,7 @@ impl<'a> WebDecisions<'a> {
     }
 }
 
-/// @nyan: §7 post-hoc probe for `web.answers`. Only the hits the model was
+/// §7 post-hoc probe for `web.answers`. Only the hits the model was
 /// actually shown and that the decision marked "likely answers" are retained;
 /// a later WebFetch of one of their URLs records the usage.
 pub fn register_answer_probe(hits: &[SearchHit]) {
@@ -304,7 +301,7 @@ fn marked_urls(hits: &[SearchHit]) -> Vec<String> {
         .collect()
 }
 
-/// @nyan: §7 post-hoc probe for `web.page_answers`. The hint names exactly one
+/// §7 post-hoc probe for `web.page_answers`. The hint names exactly one
 /// next candidate; probing it shows whether the model followed the hint.
 pub fn register_next_candidate_probe(url: &str) {
     probe::register_urls(DecisionPoint::WebPageAnswers, [url.to_string()]);
@@ -317,7 +314,7 @@ fn prefix(text: &str, chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::web::test_support::ScriptedBackend;
+    use crate::web::test_support::ScriptedBackend;
 
     fn hit(index: usize) -> SearchHit {
         SearchHit {

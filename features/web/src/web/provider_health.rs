@@ -1,8 +1,8 @@
 //! Commercial web search and fetch provider health state machine.
 //!
-//! @nyan: six commercial providers (anysearch, brave, deepseek, exa, firecrawl,
+//! six commercial providers (anysearch, brave, deepseek, exa, firecrawl,
 //! tavily) share a `(provider, capability)`-keyed health machine. SearXNG is
-//! self-hosted and continues to use [`crate::services::service_health::ServiceHealth`].
+//! self-hosted and continues to use [`crate::service_health::ServiceHealth`].
 //!
 //! Key differences from self-hosted service health:
 //! 1. Failure grading: soft errors (timeout, network, 5xx, invalid) enter Down on 2 consecutive
@@ -461,7 +461,7 @@ impl ProviderHealthRegistry {
                     entry.soft_streak += 1;
                     if entry.soft_streak >= threshold {
                         entry.downs += 1;
-                        let window = crate::services::service_health::backoff_for(entry.downs);
+                        let window = crate::service_health::backoff_for(entry.downs);
                         entry.down_until = Some(now + window);
                     }
                 }

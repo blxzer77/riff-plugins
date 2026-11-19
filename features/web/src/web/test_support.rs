@@ -1,6 +1,6 @@
 //! Path-routed local HTTP mock for fetcher / fallback / tool tests.
 //!
-//! @nyan: test-only. Serves plain HTTP on `127.0.0.1:<random>`; the fetcher's
+//! test-only. Serves plain HTTP on `127.0.0.1:<random>`; the fetcher's
 //! test seam (`allow_private_for_tests`) is what lets it reach this address.
 //! Absolute-form request targets (what an HTTP proxy receives) are routed by
 //! their path, so the same server can stand in for a proxy.
@@ -12,57 +12,53 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::services::decision::{
+use crate::decision::{
     Answer, BackendFuture, DecisionBackend, DecisionOutcome, DecisionProvider, DecisionRequest,
     FallbackReason, Receipt,
 };
-use crate::tool::AbortController;
-use crate::utils::settings::nyan::DecisionSettings;
+use crate::runtime::AbortController;
+use crate::settings::DecisionSettings;
 
-/// Installs `nyan.web` into the merged settings for one test. Holds the env
-/// lock so settings caches cannot be reset underneath it; dropping it resets
-/// them. Decision points are disabled unless the test installs a scripted
-/// provider, so no test can reach a real backend through global settings.
+/// Installs a `web` configuration for one test, in a fresh `$RIFF_HOME`.
+/// Holds the env lock so nothing resets the configuration underneath it;
+/// dropping it clears both. Decision points are disabled unless the test
+/// installs a scripted provider, so no test can reach a real backend.
 pub(crate) struct WebSettingsGuard {
-    _lock: crate::utils::test_env::TestEnvGuard<'static>,
+    _home: crate::test_env::TempHome,
+    _lock: crate::test_env::TestEnvGuard<'static>,
 }
 
 impl WebSettingsGuard {
-    /// No `nyan` block at all (the CC-fallback configuration).
+    /// No configuration loaded at all.
     pub fn none() -> Self {
-        use crate::utils::settings::settings_cache;
-        use crate::utils::settings::validation::SettingsWithErrors;
-
-        let lock = crate::utils::test_env::TEST_ENV_LOCK
+        let lock = crate::test_env::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        settings_cache::set_session_settings_cache(SettingsWithErrors {
-            settings: crate::utils::settings::types::SettingsJson::default(),
-            ..Default::default()
-        });
-        Self { _lock: lock }
+        crate::runtime::set_config(None);
+        Self {
+            _home: crate::test_env::TempHome::new("web-none"),
+            _lock: lock,
+        }
     }
 
-    pub fn install(web: crate::utils::settings::nyan::WebSettings) -> Self {
-        use crate::utils::settings::settings_cache;
-        use crate::utils::settings::validation::SettingsWithErrors;
-
-        let lock = crate::utils::test_env::TEST_ENV_LOCK
+    pub fn install(web: crate::settings::WebSettings) -> Self {
+        let lock = crate::test_env::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let settings = crate::utils::settings::types::SettingsJson {
-            nyan: Some(Box::new(crate::utils::settings::nyan::NyanSettings {
-                web: Some(web),
-                decision: Some(disabled_decisions()),
-                ..Default::default()
-            })),
-            ..Default::default()
-        };
-        settings_cache::set_session_settings_cache(SettingsWithErrors {
-            settings,
-            ..Default::default()
-        });
-        Self { _lock: lock }
+        crate::runtime::set_config(Some(crate::settings::Config {
+            web: Some(web),
+            decision: Some(disabled_decisions()),
+        }));
+        Self {
+            _home: crate::test_env::TempHome::new("web"),
+            _lock: lock,
+        }
+    }
+}
+
+impl Drop for WebSettingsGuard {
+    fn drop(&mut self) {
+        crate::runtime::set_config(None);
     }
 }
 
@@ -83,8 +79,8 @@ impl Drop for DecisionOverrideGuard {
     }
 }
 
-fn disabled_decisions() -> crate::utils::settings::nyan::DecisionSettings {
-    let mut settings = crate::utils::settings::nyan::DecisionSettings::default();
+fn disabled_decisions() -> crate::settings::DecisionSettings {
+    let mut settings = crate::settings::DecisionSettings::default();
     settings.enabled = Some(false);
     settings
 }
@@ -94,7 +90,7 @@ fn disabled_decisions() -> crate::utils::settings::nyan::DecisionSettings {
 /// user did not mention, and the only opt-out is `enabled: false`.
 pub(crate) fn only_mocked_providers(partial: Value) -> Value {
     let mut providers = serde_json::Map::new();
-    for name in crate::utils::settings::nyan::provider_names() {
+    for name in crate::settings::provider_names() {
         providers.insert(name.to_string(), json!({"enabled": false}));
     }
     if let Some(given) = partial.as_object() {
@@ -110,8 +106,8 @@ pub(crate) fn only_mocked_providers(partial: Value) -> Value {
 pub(crate) fn key_file() -> String {
     static PATH: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
     PATH.get_or_init(|| {
-        let dir =
-            std::env::temp_dir().join(format!("nyan-test-keys-{}", uuid::Uuid::new_v4().simple()));
+        let dir = crate::test_env::scratch_root()
+            .join(format!("riff-test-keys-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("key");
         std::fs::write(&path, "test-key-not-real\n").unwrap();

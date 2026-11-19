@@ -1,20 +1,20 @@
-//! `nyan web search|fetch`: non-interactive WebSearch / WebFetch for scripts.
+//! `riff web search|fetch`: web search and verbatim page fetch for agents.
 //!
-//! @nyan: a thin front end over `services::web` and the WebFetch tool's
-//! verbatim page read, so ranking, SSRF policy, snapshots, provider fallback
-//! and `range` continuation are the same as inside a session. stdout carries
-//! only the result; every failure is one stderr line and a distinct exit code.
+//! From nyan's `nyan web` (`cli/web.rs`, nyan#134): a thin front end over
+//! `crate::web`, so ranking, SSRF policy, snapshots, provider fallback and
+//! `range` continuation behave the same. stdout carries only the result;
+//! every failure is one stderr line and a distinct exit code.
 
 use std::io::Write;
 use std::time::Duration;
 
 use serde_json::json;
 
-use crate::services::web::search::{SearchError, SearchOutcome};
-use crate::services::web::snapshot::RangeSpec;
-use crate::tool::AbortController;
-use crate::tools::web_fetch_tool::{Origin, PageRead, ReadError};
-use crate::utils::settings::nyan::WebSettings;
+use crate::runtime::AbortController;
+use crate::settings::WebSettings;
+use crate::web::read_page::{Origin, PageRead, ReadError};
+use crate::web::search::{SearchError, SearchOutcome};
+use crate::web::snapshot::RangeSpec;
 
 /// One stdout write stays under this many bytes.
 pub(crate) const MAX_OUTPUT_BYTES: usize = 30_000;
@@ -24,12 +24,12 @@ const DEFAULT_LIMIT: usize = 8;
 const MAX_LIMIT: usize = 20;
 
 pub const HELP: &str = "\
-Usage: nyan web search <query...> [options]
-       nyan web fetch <url> [options]
+Usage: riff web search <query...> [options]
+       riff web fetch <url> [options]
 
-Non-interactive web search and page fetch using the nyan.web settings
-(providers, decision, rerank, apiKeyFile key files, proxy) - no login,
-session or TUI. Results go to stdout, errors to stderr.
+Web search and verbatim page fetch, configured by $RIFF_HOME/config.json
+(default ~/.riff; providers, decision, rerank, key files) and the proxy
+environment. Results go to stdout, errors to stderr.
 
 Commands:
   search <query...>   Search every enabled provider; words are joined by spaces
@@ -40,6 +40,8 @@ Options:
       --json             Print JSON instead of Markdown
       --timeout <secs>   Total time limit in seconds (default 15)
       --limit <n>        search: maximum results, 1-20 (default 8)
+      --allow-domain <d> search: only results from this domain (repeatable)
+      --block-domain <d> search: never results from this domain (repeatable)
       --range <spec>     fetch: chars:START-[END], START-[END] or #heading
   -h, --help             Show this help
       --                 Treat every later word as a query word or URL
@@ -76,7 +78,7 @@ pub(crate) enum Parsed {
 }
 
 /// Exit codes, documented in [`HELP`].
-pub(crate) mod exit {
+pub mod exit {
     pub const OTHER: i32 = 1;
     pub const USAGE: i32 = 2;
     pub const CONFIG: i32 = 3;
@@ -213,7 +215,7 @@ fn parse_range(raw: &str) -> Result<RangeSpec, String> {
     } else {
         raw.to_string()
     };
-    match crate::services::web::snapshot::parse_range(Some(&spec)) {
+    match crate::web::snapshot::parse_range(Some(&spec)) {
         Ok(Some(range)) => Ok(range),
         _ => Err(format!(
             "invalid --range `{raw}`: expected chars:START-[END], START-[END] or #heading"
@@ -221,7 +223,7 @@ fn parse_range(raw: &str) -> Result<RangeSpec, String> {
     }
 }
 
-/// `nyan web …`: `args` are the words after `web`.
+/// `riff web …`: `args` are the words after `web`.
 pub fn run(args: &[String]) -> i32 {
     let invocation = match parse(args) {
         Ok(Parsed::Help) => {
@@ -230,29 +232,33 @@ pub fn run(args: &[String]) -> i32 {
         }
         Ok(Parsed::Run(invocation)) => invocation,
         Err(message) => {
-            eprintln!("nyan web: {message}\nRun `nyan web --help` for usage.");
+            eprintln!("riff web: {message}\nRun `riff web --help` for usage.");
             return exit::USAGE;
         }
     };
-    // Same trusted settings env (proxy, CA) and TLS setup the session applies
-    // before its first request; project-scoped settings contribute only the
-    // safe allowlist, as for `nyan update`.
-    crate::utils::tls_provider::install_crypto_provider();
-    crate::utils::managed_env::apply_safe_config_environment_variables();
-    crate::utils::ca_certs_config::apply_extra_ca_certs_from_config();
-    crate::utils::mtls::configure_global_mtls();
-    crate::utils::proxy::configure_global_agents();
-    let Some(web) = crate::services::web::settings() else {
-        eprintln!("nyan web: nyan.web is not configured in settings");
+    crate::net::install_crypto_provider();
+    let config = match crate::home::load_config(None) {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!("riff web: {error}");
+            return exit::CONFIG;
+        }
+    };
+    let Some(web) = config.web.clone() else {
+        eprintln!(
+            "riff web: no `web` section in {}",
+            crate::home::config_path().display()
+        );
         return exit::CONFIG;
     };
+    crate::runtime::set_config(Some(config));
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
     {
         Ok(runtime) => runtime,
         Err(error) => {
-            eprintln!("nyan web: cannot start the async runtime: {error}");
+            eprintln!("riff web: cannot start the async runtime: {error}");
             return exit::OTHER;
         }
     };
@@ -273,7 +279,7 @@ pub fn run(args: &[String]) -> i32 {
             0
         }
         Err(failure) => {
-            eprintln!("nyan web: {}", failure.message);
+            eprintln!("riff web: {}", failure.message);
             failure.code
         }
     }
@@ -284,7 +290,7 @@ pub fn run(args: &[String]) -> i32 {
 pub(crate) async fn execute(
     invocation: &Invocation,
     web: &WebSettings,
-    test_config: Option<crate::services::web::fetcher::FetchConfig>,
+    test_config: Option<crate::web::fetcher::FetchConfig>,
 ) -> Result<String, Failure> {
     let abort = AbortController::default();
     let work = async {
@@ -327,11 +333,10 @@ async fn search(
     abort: &AbortController,
     json: bool,
 ) -> Result<String, Failure> {
-    let rerank = crate::services::web::rerank_client(web);
-    let outcome =
-        crate::services::web::search::search(query, &[], &[], limit, web, rerank.as_ref(), abort)
-            .await
-            .map_err(search_failure)?;
+    let rerank = crate::web::rerank_client(web);
+    let outcome = crate::web::search::search(query, &[], &[], limit, web, rerank.as_ref(), abort)
+        .await
+        .map_err(search_failure)?;
     Ok(render_search(query, &outcome, json))
 }
 
@@ -461,10 +466,10 @@ async fn fetch(
     range: Option<&RangeSpec>,
     web: &WebSettings,
     abort: &AbortController,
-    test_config: Option<crate::services::web::fetcher::FetchConfig>,
+    test_config: Option<crate::web::fetcher::FetchConfig>,
     json: bool,
 ) -> Result<String, Failure> {
-    let page = crate::tools::web_fetch_tool::read_page(url, range, web, abort, test_config)
+    let page = crate::web::read_page::read_page(url, range, web, abort, test_config)
         .await
         .map_err(read_failure)?;
     Ok(render_fetch(url, &page, json))
@@ -476,7 +481,7 @@ fn read_failure(error: ReadError) -> Failure {
         ReadError::Range(_) => exit::USAGE,
         ReadError::Fetch(failure) if !failure.attempts.is_empty() => exit::NETWORK,
         ReadError::Fetch(failure) => {
-            let reason = failure.nyan.as_str();
+            let reason = failure.direct.as_str();
             if reason.starts_with("proxy_unconfigured") {
                 exit::CONFIG
             } else if [
@@ -529,11 +534,11 @@ fn origin_name(origin: Origin) -> &'static str {
     }
 }
 
-/// `nyan web fetch <url> --range <end>-`, shell-quoted for `bash -c`.
+/// `riff web fetch <url> --range <end>-`, shell-quoted for `bash -c`.
 pub(crate) fn next_command(url: &str, end: usize, json: bool) -> String {
     format!(
-        "nyan web fetch {} --range {end}-{}",
-        crate::utils::swarm::spawn_utils::shell_quote(url),
+        "riff web fetch {} --range {end}-{}",
+        crate::runtime::shell_quote(url),
         if json { " --json" } else { "" }
     )
 }
@@ -610,12 +615,11 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::*;
-    use crate::services::web::search::{SearchFailure, SearchHit};
-    use crate::services::web::test_support::{
+    use crate::web::search::{SearchFailure, SearchHit};
+    use crate::web::test_support::{
         Route, WebSettingsGuard, key_file, only_mocked_providers, serve,
     };
-    use crate::services::web::{budget, fetcher::FetchConfig, provider_health};
-    use crate::utils::test_env::EnvVarGuard;
+    use crate::web::{budget, fetcher::FetchConfig, provider_health};
 
     fn args(words: &[&str]) -> Vec<String> {
         words.iter().map(|word| (*word).to_string()).collect()
@@ -724,7 +728,7 @@ mod tests {
                 assert_eq!(parsed, Ok(Parsed::Help), "{words:?}");
             }
         }
-        assert!(HELP.contains("nyan web fetch <url>"));
+        assert!(HELP.contains("riff web fetch <url>"));
         assert!(HELP.contains("--timeout <secs>"));
         assert!(HELP.contains("124 timeout"));
     }
@@ -778,25 +782,6 @@ mod tests {
         assert_eq!(run(&args(&["search"])), exit::USAGE);
         assert_eq!(run(&args(&["search", "q", "--nope"])), exit::USAGE);
         assert_eq!(run(&args(&["--help"])), 0);
-    }
-
-    #[test]
-    fn the_top_level_parser_routes_web_and_its_help() {
-        let argv = |words: &[&str]| {
-            std::iter::once("nyan".to_string())
-                .chain(words.iter().map(|word| (*word).to_string()))
-                .collect::<Vec<_>>()
-        };
-        let config = crate::cli::parse_cli_config(&argv(&["web", "search", "q", "--json"]));
-        assert_eq!(config.subcommand.as_deref(), Some("web"));
-        assert_eq!(config.subcommand_args, args(&["search", "q", "--json"]));
-        assert!(config.unimplemented_reasons().is_empty());
-        // `--help` after `web` belongs to `web`, not the top-level help.
-        let config = crate::cli::parse_cli_config(&argv(&["web", "fetch", "--help"]));
-        assert!(!config.show_help);
-        assert_eq!(crate::cli::dispatch(&config), Some(0));
-        let config = crate::cli::parse_cli_config(&argv(&["web", "fetch"]));
-        assert_eq!(crate::cli::dispatch(&config), Some(exit::USAGE));
     }
 
     // ── search rendering ───────────────────────────────────────
@@ -889,33 +874,18 @@ mod tests {
 
     // ── against local mocks ────────────────────────────────────
 
-    /// Holds the env lock (via the settings guard), then the provider-health
-    /// lock, in the order `utils::test_env` prescribes.
+    /// Holds the env lock and a fresh `$RIFF_HOME` (via the settings guard),
+    /// then the provider-health lock, in that order.
     struct Env {
-        dir: std::path::PathBuf,
-        _config_home: EnvVarGuard,
         _health: std::sync::MutexGuard<'static, ()>,
         _settings: WebSettingsGuard,
     }
 
-    impl Drop for Env {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.dir);
-        }
-    }
-
-    fn env(name: &str, web: &WebSettings) -> Env {
+    fn env(_name: &str, web: &WebSettings) -> Env {
         let settings = WebSettingsGuard::install(web.clone());
         let health = provider_health::test_lock();
         budget::reset();
-        let dir = std::env::temp_dir().join(format!(
-            "nyan-web-cli-{name}-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
         Env {
-            _config_home: EnvVarGuard::set("NYAN_CONFIG_DIR", &dir),
-            dir,
             _health: health,
             _settings: settings,
         }
@@ -956,7 +926,7 @@ mod tests {
             &text[..1000]
         )));
         assert!(first.contains(&format!(
-            "[next segment: nyan web fetch {url} --range 1000-]"
+            "[next segment: riff web fetch {url} --range 1000-]"
         )));
 
         let middle = exec(&["fetch", &url, "--range", "1000-"], &web)
@@ -994,7 +964,7 @@ mod tests {
         assert_eq!(value["status"], 200);
         assert_eq!(
             value["next"],
-            json!({"range": "2000-", "command": format!("nyan web fetch {url} --range 2000- --json")})
+            json!({"range": "2000-", "command": format!("riff web fetch {url} --range 2000- --json")})
         );
         let tail = exec(&["fetch", &url, "--range", "2000-", "--json"], &web)
             .await
@@ -1071,7 +1041,7 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(missing.code, exit::NETWORK);
-        assert_eq!(missing.message, "fetch_failed: nyan http_404");
+        assert_eq!(missing.message, "fetch_failed: riff http_404");
 
         let refused = execute(
             &run_of(&["fetch", "https://127.0.0.1/x"]),
@@ -1186,11 +1156,11 @@ mod tests {
     fn the_next_command_is_shell_quoted() {
         assert_eq!(
             next_command("https://e.com/a?b=1&c='x'", 40, false),
-            "nyan web fetch 'https://e.com/a?b=1&c='\\''x'\\''' --range 40-"
+            "riff web fetch 'https://e.com/a?b=1&c='\\''x'\\''' --range 40-"
         );
         assert_eq!(
             next_command("https://e.com/a", 7, true),
-            "nyan web fetch https://e.com/a --range 7- --json"
+            "riff web fetch https://e.com/a --range 7- --json"
         );
     }
 }

@@ -1,6 +1,6 @@
 //! Ordered FetchProvider fallback after nyan's own fetcher (external-search 4.6).
 //!
-//! @nyan: nyan fetches first. Only a named, retryable failure (403 / 429 / 451 /
+//! nyan fetches first. Only a named, retryable failure (403 / 429 / 451 /
 //! timeout) or a too-short body moves on to providers, in `fetchFallback` order,
 //! first success wins. SSRF and configuration denials (`denied_*`,
 //! `proxy_unconfigured`) never reach a provider: the URL itself must not leave
@@ -16,21 +16,21 @@ use super::fetcher::{FetchConfig, FetchError, FetchedPage, fetch_url};
 use super::provider_health::{self, Capability};
 use super::providers::{self, ProviderError, ProviderPage};
 use super::snapshot::{self, Snapshot};
-use crate::tool::AbortController;
-use crate::utils::settings::nyan::WebSettings;
+use crate::runtime::AbortController;
+use crate::settings::WebSettings;
 
 /// Bodies shorter than this look like JS shells or challenge pages.
 const MIN_BODY_CHARS: usize = 200;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FetchChainFailure {
-    pub nyan: String,
+    pub direct: String,
     pub attempts: Vec<(String, String)>,
 }
 
 impl std::fmt::Display for FetchChainFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut parts = vec![format!("nyan {}", self.nyan)];
+        let mut parts = vec![format!("riff {}", self.direct)];
         parts.extend(
             self.attempts
                 .iter()
@@ -79,15 +79,15 @@ pub async fn fetch_chain(
             fallback(raw_url, &error.to_string(), abort_controller, web).await
         }
         Err(error) => Err(FetchChainFailure {
-            nyan: error.to_string(),
+            direct: error.to_string(),
             attempts: Vec::new(),
         }),
     }
 }
 
 fn nyan_snapshot(page: &FetchedPage) -> Result<FetchChainResult, FetchChainFailure> {
-    let snapshot = snapshot::save_nyan(page).map_err(|error| FetchChainFailure {
-        nyan: format!("snapshot_error: {error}"),
+    let snapshot = snapshot::save_direct(page).map_err(|error| FetchChainFailure {
+        direct: format!("snapshot_error: {error}"),
         attempts: Vec::new(),
     })?;
     Ok(FetchChainResult {
@@ -108,7 +108,7 @@ async fn challenge_fallback(
     match fallback(raw_url, "challenge_page", abort_controller, web).await {
         Ok(result) => Ok(result),
         Err(failure) => {
-            crate::utils::debug::log_for_debugging(&format!(
+            crate::runtime::log_for_debugging(&format!(
                 "web.fetch_fallback: serving the direct page after provider fallback failed ({failure})"
             ));
             let mut result = nyan_snapshot(&page)?;
@@ -173,7 +173,7 @@ async fn fallback(
         };
         let max_calls = web.provider(&name).max_calls_per_session;
         if let Err(error) = budget::reserve_provider(&name, max_calls) {
-            crate::utils::debug::log_for_debugging(&format!("web fetch fallback: {error}"));
+            crate::runtime::log_for_debugging(&format!("web fetch fallback: {error}"));
             attempts.push((name, ProviderError::BudgetExhausted.code()));
             continue;
         }
@@ -192,7 +192,7 @@ async fn fallback(
                 }
                 let snapshot =
                     save_provider_page(page, name.clone()).map_err(|error| FetchChainFailure {
-                        nyan: direct_reason.to_string(),
+                        direct: direct_reason.to_string(),
                         attempts: vec![(name.clone(), format!("snapshot_error: {error}"))],
                     })?;
                 return Ok(FetchChainResult {
@@ -221,7 +221,7 @@ async fn fallback(
         attempts.push(("providers".to_string(), reason.to_string()));
     }
     Err(FetchChainFailure {
-        nyan: direct_reason.to_string(),
+        direct: direct_reason.to_string(),
         attempts,
     })
 }
@@ -252,8 +252,8 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::*;
-    use crate::services::decision::Answer;
-    use crate::services::web::test_support::{
+    use crate::decision::Answer;
+    use crate::web::test_support::{
         Route, ScriptedBackend, key_file, only_mocked_providers, serve,
     };
 
@@ -279,10 +279,10 @@ mod tests {
     }
 
     fn test_lock() -> (
-        crate::utils::test_env::TestEnvGuard<'static>,
+        crate::test_env::TestEnvGuard<'static>,
         std::sync::MutexGuard<'static, ()>,
     ) {
-        let env = crate::utils::test_env::TEST_ENV_LOCK
+        let env = crate::test_env::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         budget::reset();
@@ -347,7 +347,7 @@ mod tests {
             json!(["firecrawl"]),
         );
         let result = chain(&site.url("/ok"), &settings, None).await.unwrap();
-        assert_eq!(result.snapshot.metadata.fetched_by, "nyan");
+        assert_eq!(result.snapshot.metadata.fetched_by, "riff");
         assert_eq!(result.direct_reason, None);
         assert!(provider.seen().is_empty());
     }
@@ -468,9 +468,9 @@ mod tests {
             .unwrap_err();
             assert!(failure.attempts.is_empty(), "{target}: {failure}");
             assert!(
-                failure.nyan.starts_with("denied_"),
+                failure.direct.starts_with("denied_"),
                 "{target}: {}",
-                failure.nyan
+                failure.direct
             );
         }
         // A deny-listed host is a config denial, too.
@@ -486,7 +486,7 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert_eq!(failure.nyan, "denied_host");
+        assert_eq!(failure.direct, "denied_host");
         assert!(
             provider.seen().is_empty(),
             "no URL may be sent to a provider"
@@ -495,10 +495,10 @@ mod tests {
 
     #[tokio::test]
     async fn proxy_unconfigured_does_not_fall_back() {
-        let _lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
+        let _lock = crate::test_env::TEST_ENV_LOCK.lock().unwrap();
         let _health_lock = provider_health::test_lock();
         let _guards = ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"]
-            .map(crate::utils::test_env::EnvVarGuard::unset);
+            .map(crate::test_env::EnvVarGuard::unset);
         let provider = serve(vec![("/scrape", firecrawl_ok())]).await;
         let settings = web(
             json!({"firecrawl": provider_json(&provider.origin)}),
@@ -514,7 +514,7 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert_eq!(failure.nyan, "proxy_unconfigured");
+        assert_eq!(failure.direct, "proxy_unconfigured");
         assert!(failure.attempts.is_empty());
         assert!(provider.seen().is_empty());
     }
@@ -540,9 +540,9 @@ mod tests {
         ] {
             let failure = chain(&site.url(path), &settings, None).await.unwrap_err();
             assert!(
-                failure.nyan.starts_with(expected),
+                failure.direct.starts_with(expected),
                 "{path}: {}",
-                failure.nyan
+                failure.direct
             );
         }
         assert!(provider.seen().is_empty());
@@ -569,7 +569,7 @@ mod tests {
         let failure = chain(&site.url("/blocked"), &settings, None)
             .await
             .unwrap_err();
-        assert_eq!(failure.nyan, "http_403");
+        assert_eq!(failure.direct, "http_403");
         assert_eq!(
             failure.attempts,
             vec![
@@ -580,7 +580,7 @@ mod tests {
         );
         assert_eq!(
             failure.to_string(),
-            "fetch_failed: nyan http_403, firecrawl quota_exhausted, brave unsupported, anysearch rate_limited"
+            "fetch_failed: riff http_403, firecrawl quota_exhausted, brave unsupported, anysearch rate_limited"
         );
     }
 
@@ -607,15 +607,15 @@ mod tests {
         );
         assert_eq!(
             failure.to_string(),
-            "fetch_failed: nyan http_403, providers fallback_disabled"
+            "fetch_failed: riff http_403, providers fallback_disabled"
         );
     }
 
     #[tokio::test]
     async fn a_provider_with_an_unreadable_key_is_named_and_the_next_one_runs() {
         let (_env, _health) = test_lock();
-        let dir =
-            std::env::temp_dir().join(format!("nyan-fallback-{}", uuid::Uuid::new_v4().simple()));
+        let dir = crate::test_env::scratch_root()
+            .join(format!("riff-fallback-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         let key = dir.join("empty");
         std::fs::write(&key, "\n").unwrap();
@@ -694,7 +694,7 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert_eq!(failure.nyan, "cancelled");
+        assert_eq!(failure.direct, "cancelled");
         assert!(provider.seen().is_empty());
     }
 
@@ -702,7 +702,7 @@ mod tests {
 
     fn challenge_answer(
         probability: f64,
-    ) -> impl Fn(&crate::services::decision::DecisionRequest) -> std::collections::BTreeMap<String, Answer>
+    ) -> impl Fn(&crate::decision::DecisionRequest) -> std::collections::BTreeMap<String, Answer>
     {
         move |_| {
             [("challenge".to_string(), Answer::Noul { probability })]
@@ -746,7 +746,7 @@ mod tests {
         let result = chain(&site.url("/page"), &settings, Some(&decisions))
             .await
             .unwrap();
-        assert_eq!(result.snapshot.metadata.fetched_by, "nyan");
+        assert_eq!(result.snapshot.metadata.fetched_by, "riff");
         assert!(result.challenge_fallback_failed);
         assert_eq!(provider.seen().len(), 1, "the provider was tried");
     }
@@ -768,18 +768,17 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(
-                result.snapshot.metadata.fetched_by, "nyan",
+                result.snapshot.metadata.fetched_by, "riff",
                 "p={probability}"
             );
         }
-        let (down, _) =
-            ScriptedBackend::failing(crate::services::decision::FallbackReason::BackendDown);
+        let (down, _) = ScriptedBackend::failing(crate::decision::FallbackReason::BackendDown);
         let abort = AbortController::default();
         let decisions = WebDecisions::new(&down, &abort);
         let result = chain(&site.url("/page"), &settings, Some(&decisions))
             .await
             .unwrap();
-        assert_eq!(result.snapshot.metadata.fetched_by, "nyan");
+        assert_eq!(result.snapshot.metadata.fetched_by, "riff");
         assert!(provider.seen().is_empty());
     }
 
@@ -798,7 +797,7 @@ mod tests {
         let failure = chain(&site.url("/missing"), &settings, Some(&decisions))
             .await
             .unwrap_err();
-        assert_eq!(failure.nyan, "http_404");
+        assert_eq!(failure.direct, "http_404");
         assert!(
             backend.requests().is_empty(),
             "no page, nothing to classify"
@@ -809,7 +808,7 @@ mod tests {
     // ── Provider health on the fetch path (H3) ─────────────────
 
     async fn fetch_only(
-        site: &crate::services::web::test_support::Server,
+        site: &crate::web::test_support::Server,
         settings: &WebSettings,
     ) -> Result<FetchChainResult, FetchChainFailure> {
         chain(&site.url("/blocked"), settings, None).await

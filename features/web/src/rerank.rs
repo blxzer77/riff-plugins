@@ -1,6 +1,6 @@
 //! Shared rerank client (retrieval 4.9, slice G0).
 //!
-//! @nyan: one client for both code search and web-search precision rerank.
+//! one client for both code search and web-search precision rerank.
 //! The service address is configured once (`nyan.retrieval.rerank.url`); the
 //! two switches are independent (`nyan.retrieval.rerank.enabled`, default off;
 //! `nyan.web.search.rerank.enabled`, default on).
@@ -32,8 +32,8 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::services::service_health::{self, CallPermit, FailureKind, ServiceKind};
-use crate::utils::settings::nyan::RerankSettings;
+use crate::service_health::{self, CallPermit, FailureKind, ServiceKind};
+use crate::settings::RerankSettings;
 
 /// The official Qwen3-Reranker instruction template, byte for byte
 /// (retrieval 4.9). `\n` inside is part of the protocol, not formatting.
@@ -141,10 +141,8 @@ impl RerankClient {
         request_timeout_ms: u64,
     ) -> anyhow::Result<Self> {
         let health = service_health::shared(ServiceKind::Rerank);
-        // `client_builder` is the one allowed reqwest constructor (clippy.toml);
-        // `.no_proxy()` overrides any proxy it would otherwise pick up.
-        let client = crate::utils::proxy::client_builder()
-            .no_proxy()
+        // A private-network service: never proxied.
+        let client = crate::net::direct_client_builder(&crate::net::ProcessEnv)?
             .connect_timeout(health.connect_timeout())
             .timeout(Duration::from_millis(request_timeout_ms))
             .pool_idle_timeout(Duration::from_secs(90))
@@ -385,7 +383,7 @@ pub fn order_by_score(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::service_health::ServiceHealth;
+    use crate::service_health::ServiceHealth;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     fn health() -> std::sync::Arc<ServiceHealth> {
@@ -397,7 +395,7 @@ mod tests {
     }
 
     fn client(url: &str, health: std::sync::Arc<ServiceHealth>) -> RerankClient {
-        crate::utils::tls_provider::install_crypto_provider();
+        crate::net::install_crypto_provider();
         RerankClient::with_client(
             url,
             "qwen3-reranker-0.6b",
@@ -678,18 +676,16 @@ mod tests {
     fn clients_are_built_without_a_proxy() {
         // The address is loopback/tailnet; going through the local proxy would
         // be both wrong and slow (retrieval 3.1).
-        let client = RerankClient::from_settings(
-            &crate::utils::settings::nyan::RerankSettings::default(),
-            2_000,
-        )
-        .unwrap();
+        let client =
+            RerankClient::from_settings(&crate::settings::RerankSettings::default(), 2_000)
+                .unwrap();
         assert_eq!(client.url(), "http://10.144.0.11:8091");
         assert_eq!(client.model(), "qwen3-reranker-0.6b");
         assert_eq!(client.connect_timeout, Duration::from_millis(1_500));
         assert_eq!(client.request_timeout, Duration::from_millis(2_000));
         assert_eq!(client.max_document_chars, DEFAULT_MAX_DOCUMENT_CHARS);
         assert_eq!(
-            crate::utils::settings::nyan::RerankSettings::default().max_document_chars() as usize,
+            crate::settings::RerankSettings::default().max_document_chars() as usize,
             DEFAULT_MAX_DOCUMENT_CHARS
         );
     }
@@ -791,7 +787,7 @@ mod tests {
             }
         }
 
-        let lockfile = include_str!("../../Cargo.lock");
+        let lockfile = include_str!("../../../Cargo.lock");
         assert!(
             lockfile.chars().count() > 40_000,
             "Cargo.lock is the oversized snippet from the eval"

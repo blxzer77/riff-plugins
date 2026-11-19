@@ -1,9 +1,8 @@
-//! @nyan: post-hoc usage probes (decision-provider §7).
+//! Post-hoc usage probes (decision-provider §7).
 //!
 //! A decision can only record what it answered. Whether the retained result
-//! was actually used afterwards is observable from later events: the model
-//! reads a file candidate with `Read`, fetches a URL candidate with
-//! `WebFetch`, or the user accepts the shown prompt suggestion. This module
+//! was actually used afterwards is observable from a later event: the model
+//! fetches a URL candidate with `riff web fetch`. This module
 //! keeps the recent probes in memory and appends two extra record shapes to
 //! the same `decision/decisions.jsonl`:
 //!
@@ -12,17 +11,14 @@
 //! - `{"event":"posthoc", "probeId", "point", "kind", "identity"}` the first
 //!   time each retained candidate is observed.
 //!
-//! `/decision` reads `probes` and `used` from these rows, so the denominator
+//! `riff web decisions` reads `probes` and `used` from these rows, so the denominator
 //! is explicit and decision samples are never double-counted. Probes expire
 //! after [`PROBE_TTL`]; an expired probe simply stops matching, keeping memory
-//! bounded across a long session. `/clear` forgets them (`clear`).
+//! bounded across a long session. `riff web reset` forgets them (`clear`).
 //!
-//! Scope: only points whose retained result has a concrete identity (a file
-//! path, a URL, or the suggestion text the user saw) create probes. Memory and
-//! compaction points have no such identity yet and are not probed here.
+//! Scope: riff only has URL candidates (`web.answers`, `web.page_answers`).
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -37,17 +33,13 @@ const MAX_PROBES: usize = 256;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Kind {
-    File,
     Url,
-    Suggestion,
 }
 
 impl Kind {
     fn as_str(self) -> &'static str {
         match self {
-            Kind::File => "file",
             Kind::Url => "url",
-            Kind::Suggestion => "suggestion",
         }
     }
 }
@@ -99,24 +91,6 @@ struct PosthocRecord {
     identity: String,
 }
 
-/// Register the file candidates a decision retained. Paths are matched later
-/// against `Read` calls after canonicalization, so callers may pass either an
-/// absolute path or a path relative to the current directory.
-pub fn register_files<I>(point: DecisionPoint, paths: I) -> Option<String>
-where
-    I: IntoIterator<Item = PathBuf>,
-{
-    register(
-        point,
-        Kind::File,
-        paths.into_iter().map(|path| {
-            let key = normalize_file(&path);
-            let label = path.display().to_string();
-            (key, label)
-        }),
-    )
-}
-
 /// Register the URL candidates a decision retained. URLs are matched later
 /// against `WebFetch` calls after scheme/host and fragment normalization.
 pub fn register_urls<I>(point: DecisionPoint, urls: I) -> Option<String>
@@ -131,13 +105,6 @@ where
             (key, url)
         }),
     )
-}
-
-/// Register the suggestion a decision let through. Acceptance later marks it
-/// used, so `/decision` reports how often generated suggestions were taken.
-pub fn register_suggestion(point: DecisionPoint, text: &str) -> Option<String> {
-    let key = normalize_suggestion(text);
-    register(point, Kind::Suggestion, std::iter::once((key.clone(), key)))
 }
 
 fn register<I>(point: DecisionPoint, kind: Kind, candidates: I) -> Option<String>
@@ -186,21 +153,10 @@ where
     Some(id)
 }
 
-/// Report a `Read` of `path`. Every live file probe that retained the path is
-/// marked used; the first observation of each candidate appends one row.
-pub fn observe_file_read(path: &str) {
-    observe(Kind::File, normalize_file(Path::new(path)));
-}
-
 /// Report a `WebFetch` of `url`. Every live URL probe that retained the
 /// candidate is marked used.
 pub fn observe_url(url: &str) {
     observe(Kind::Url, normalize_url(url));
-}
-
-/// Report that the user accepted `text` as the shown prompt suggestion.
-pub fn observe_suggestion_acceptance(text: &str) {
-    observe(Kind::Suggestion, normalize_suggestion(text));
 }
 
 fn observe(kind: Kind, key: String) {
@@ -238,36 +194,16 @@ fn observe(kind: Kind, key: String) {
 }
 
 fn append<T: Serialize>(record: &T) {
-    if let Err(error) = crate::services::decision::log::append(record) {
-        crate::utils::debug::log_for_debugging(&format!(
+    if let Err(error) = crate::decision::log::append(record) {
+        crate::runtime::log_for_debugging(&format!(
             "DecisionProvider: cannot append post-hoc probe: {error}"
         ));
     }
 }
 
-/// `/clear`: a new conversation must not attribute old reads to old decisions.
+/// `riff web reset`: a new conversation must not attribute old fetches to old decisions.
 pub fn clear() {
     lock().clear();
-}
-
-fn normalize_file(path: &Path) -> String {
-    let normalized = std::fs::canonicalize(path).unwrap_or_else(|_| {
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            std::env::current_dir()
-                .map(|cwd| cwd.join(path))
-                .unwrap_or_else(|_| path.to_path_buf())
-        }
-    });
-    normalized.to_string_lossy().into_owned()
-}
-
-/// Suggestions are matched by their visible text. Whitespace is collapsed so
-/// a re-rendered row still matches the generated string, but case is kept:
-/// suggestion style is part of the identity the user accepted.
-fn normalize_suggestion(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn normalize_url(raw: &str) -> String {
@@ -298,23 +234,17 @@ pub fn pending_count() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+    use crate::test_env::{TEST_ENV_LOCK, TempHome};
     use serde_json::Value;
 
-    fn isolated_config(name: &str) -> (PathBuf, EnvVarGuard) {
-        let dir = crate::utils::node_os::tmpdir().join(format!(
-            "nyan-decision-probe-{name}-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &dir);
+    fn isolated_config(name: &str) -> (std::path::PathBuf, TempHome) {
+        let home = TempHome::new(&format!("decision-probe-{name}"));
         clear();
-        (dir, guard)
+        (home.path.clone(), home)
     }
 
     fn records() -> Vec<Value> {
-        let text =
-            std::fs::read_to_string(crate::services::decision::log::log_path()).unwrap_or_default();
+        let text = std::fs::read_to_string(crate::decision::log::log_path()).unwrap_or_default();
         text.lines()
             .filter_map(|line| serde_json::from_str::<Value>(line).ok())
             .collect()
@@ -325,67 +255,6 @@ mod tests {
             .into_iter()
             .filter(|record| record["event"] == event)
             .collect()
-    }
-
-    #[test]
-    fn a_file_candidate_is_matched_once_after_canonicalization() {
-        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let (config, _env) = isolated_config("file");
-        let file = config.join("src/main.rs");
-        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-        std::fs::write(&file, "fn main() {}").unwrap();
-
-        let id = register_files(DecisionPoint::RetrievalAnswers, [file.clone()]).expect("probe");
-        // A lexical variant still canonicalizes to the same candidate.
-        observe_file_read(&config.join("src/./main.rs").display().to_string());
-        observe_file_read(&file.display().to_string());
-
-        let probes = events("probe");
-        assert_eq!(probes.len(), 1);
-        assert_eq!(probes[0]["probeId"], id);
-        assert_eq!(probes[0]["point"], "retrieval.answers");
-        assert_eq!(probes[0]["kind"], "file");
-        assert_eq!(probes[0]["candidateCount"], 1);
-
-        let posthoc = events("posthoc");
-        assert_eq!(
-            posthoc.len(),
-            1,
-            "one row per candidate, not per observation"
-        );
-        assert_eq!(posthoc[0]["probeId"], id);
-        assert_eq!(posthoc[0]["point"], "retrieval.answers");
-        assert_eq!(posthoc[0]["identity"], file.display().to_string());
-        clear();
-        let _ = std::fs::remove_dir_all(&config);
-    }
-
-    #[test]
-    fn suggestion_acceptance_matches_once_after_whitespace_normalization() {
-        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let (config, _env) = isolated_config("suggestion");
-        assert!(register_suggestion(DecisionPoint::PromptSuggestionGenerateGate, "  ").is_none());
-        let id = register_suggestion(
-            DecisionPoint::PromptSuggestionGenerateGate,
-            "run   the tests",
-        )
-        .expect("probe");
-        observe_suggestion_acceptance("run the tests");
-        observe_suggestion_acceptance("run the tests");
-
-        let probes = events("probe");
-        assert_eq!(probes.len(), 1);
-        assert_eq!(probes[0]["probeId"], id);
-        assert_eq!(probes[0]["point"], "prompt_suggestion.generate_gate");
-        assert_eq!(probes[0]["kind"], "suggestion");
-
-        let posthoc = events("posthoc");
-        assert_eq!(posthoc.len(), 1, "one row per accepted suggestion");
-        assert_eq!(posthoc[0]["point"], "prompt_suggestion.generate_gate");
-        assert_eq!(posthoc[0]["kind"], "suggestion");
-        assert_eq!(posthoc[0]["identity"], "run the tests");
-        clear();
-        let _ = std::fs::remove_dir_all(&config);
     }
 
     #[test]
@@ -407,18 +276,6 @@ mod tests {
             posthoc[0]["identity"],
             "https://Example.com/docs/page/?q=1#section"
         );
-        clear();
-        let _ = std::fs::remove_dir_all(&config);
-    }
-
-    #[test]
-    fn observing_another_kind_does_not_mark_a_probe() {
-        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let (config, _env) = isolated_config("kind");
-        register_files(DecisionPoint::RetrievalAnswers, [config.join("src/lib.rs")])
-            .expect("probe");
-        observe_url("https://example.com/");
-        assert!(events("posthoc").is_empty());
         clear();
         let _ = std::fs::remove_dir_all(&config);
     }

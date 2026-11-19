@@ -1,0 +1,16 @@
+[package]
+name = "riff"
+description = "Extensions for coding agents"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "riff"
+path = "src/main.rs"
+
+[dependencies]
+riff-web = { path = "../../features/web" }

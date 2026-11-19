@@ -1,6 +1,6 @@
 //! Provider wire layer: request bodies, auth, deadlines, SearXNG health.
 //!
-//! @nyan: request construction is split from sending so each provider's body
+//! request construction is split from sending so each provider's body
 //! and URL can be asserted without a socket ([`search_call`], [`fetch_call`]).
 
 use std::sync::Arc;
@@ -12,9 +12,9 @@ use reqwest::{Method, Url};
 use serde_json::{Value, json};
 
 use super::{ProviderError, ProviderKind, QueryKind, SearchRequest, errors, read_key};
-use crate::services::service_health::{self, CallPermit, FailureKind, ServiceHealth, ServiceKind};
-use crate::services::web::provider_health::Capability;
-use crate::utils::settings::nyan::ResolvedProvider;
+use crate::service_health::{self, CallPermit, FailureKind, ServiceHealth, ServiceKind};
+use crate::settings::ResolvedProvider;
+use crate::web::provider_health::Capability;
 
 /// Provider responses are JSON search results or one converted page; anything
 /// beyond this is not a response we want to buffer.
@@ -49,7 +49,7 @@ impl ProviderClient {
             .or(resolved.url.as_deref())
             .unwrap_or(kind.default_base_url())
             .to_string();
-        let api_key = read_key(resolved.api_key_file.as_deref())?;
+        let api_key = read_key(kind.name(), resolved.api_key_file.as_deref())?;
         // SearXNG's availability is process state shared by every search.
         let health =
             (kind == ProviderKind::Searxng).then(|| service_health::shared(ServiceKind::Searxng));
@@ -69,10 +69,7 @@ impl ProviderClient {
     }
 
     pub fn fingerprint(&self) -> String {
-        crate::services::web::provider_health::compute_fingerprint(
-            &self.base_url,
-            self.api_key.as_deref(),
-        )
+        crate::web::provider_health::compute_fingerprint(&self.base_url, self.api_key.as_deref())
     }
 
     fn new(
@@ -81,15 +78,17 @@ impl ProviderClient {
         api_key: Option<String>,
         health: Option<Arc<ServiceHealth>>,
     ) -> Result<Self, ProviderError> {
-        crate::utils::tls_provider::install_crypto_provider();
+        crate::net::install_crypto_provider();
         let parsed = Url::parse(&base_url).map_err(|_| ProviderError::Invalid)?;
         // SearXNG is a tailnet address; loopback never goes through a proxy.
         let direct = kind == ProviderKind::Searxng || is_loopback(&parsed);
+        let env = crate::net::ProcessEnv;
         let builder = if direct {
-            crate::utils::proxy::client_builder().no_proxy()
+            crate::net::direct_client_builder(&env)
         } else {
-            crate::utils::proxy::create_axios_instance().map_err(|_| ProviderError::Network)?
-        };
+            crate::net::api_client_builder(&env)
+        }
+        .map_err(|_| ProviderError::Network)?;
         let http = builder.build().map_err(|_| ProviderError::Network)?;
         let client = Self {
             kind,

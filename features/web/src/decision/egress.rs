@@ -1,6 +1,6 @@
 //! Decision-provider egress: credential redaction and state digests.
 //!
-//! @nyan: decision-provider.md §6 — the decision backend may see source code,
+//! decision-provider.md §6 — the decision backend may see source code,
 //! page bodies, conversations and tool output (effect before source privacy,
 //! user 2026-10-27). One class is still blocked: **credentials**. A matched
 //! span is replaced by `<redacted>` and the request continues; the decision
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn question_instructions_are_redacted_too() {
-        use crate::services::decision::Question;
+        use crate::decision::Question;
         let mut questions = std::collections::BTreeMap::new();
         questions.insert(
             "q".to_string(),

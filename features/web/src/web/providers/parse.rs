@@ -1,6 +1,6 @@
 //! Response parsing for the seven providers (external-search 2.3, 3.3.1).
 //!
-//! @nyan: every provider has its own envelope and snippet field; this module is
+//! every provider has its own envelope and snippet field; this module is
 //! the only place that knows them. Snippets are capped at 500 chars here (the
 //! rerank input size); the tool renders the first 300.
 

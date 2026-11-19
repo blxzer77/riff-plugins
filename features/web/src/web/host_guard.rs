@@ -1,6 +1,6 @@
 //! URL normalization and SSRF host/port policy for nyan WebFetch.
 //!
-//! @nyan: this is deliberately independent of the permission system. Permission
+//! this is deliberately independent of the permission system. Permission
 //! answers whether a user allowed a domain; this module answers whether a target
 //! is ever safe to send to the network.
 
@@ -72,7 +72,7 @@ pub fn validate_url(raw: &str, config: &HostGuardConfig) -> Result<ValidatedUrl,
     if !url.username().is_empty() || url.password().is_some() {
         return Err(HostGuardError::Credentials);
     }
-    // @nyan: the local mock servers are plaintext on random ports. This branch
+    // the local mock servers are plaintext on random ports. This branch
     // is compiled only into tests; it cannot exist in a production build.
     #[cfg(test)]
     if config.allow_private_for_tests {

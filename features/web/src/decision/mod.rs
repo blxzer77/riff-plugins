@@ -1,6 +1,6 @@
 //! Decision Provider core (decision-provider.md §3, §4, §5, §8).
 //!
-//! @nyan: the decision model is a *classifier*, not a text generator. It
+//! the decision model is a *classifier*, not a text generator. It
 //! answers closed questions (noul / choice / score) about content the calling
 //! tool already has, in roughly 0.4 s, so the main model can skip a whole turn
 //! (measured p50 12.4 s per extra turn). The core here owns everything that is
@@ -40,8 +40,8 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::tool::AbortController;
-use crate::utils::settings::nyan::{DecisionMode, DecisionSettings, NyanSettings};
+use crate::runtime::AbortController;
+use crate::settings::{DecisionMode, DecisionSettings};
 
 // ════════════════════════════════════════════════════════════
 // Decision points (§4)
@@ -52,65 +52,29 @@ use crate::utils::settings::nyan::{DecisionMode, DecisionSettings, NyanSettings}
 /// truth for defaults and for the settings schema's key set.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum DecisionPoint {
-    RetrievalIntent,
-    RetrievalAnswers,
-    RetrievalSufficient,
-    RetrievalPrune,
     WebAnswers,
     WebPageAnswers,
     WebFetchFallback,
     WebQueryKind,
     WebPrune,
-    MemoryExtractNow,
-    MemoryExtractSkip,
-    MemoryType,
-    MemoryDuplicate,
-    MemoryConsolidate,
-    CompactionKeep,
-    PermissionsYoloStage1,
-    PromptSuggestionGenerateGate,
 }
 
 impl DecisionPoint {
     pub const ALL: &'static [DecisionPoint] = &[
-        DecisionPoint::RetrievalIntent,
-        DecisionPoint::RetrievalAnswers,
-        DecisionPoint::RetrievalSufficient,
-        DecisionPoint::RetrievalPrune,
         DecisionPoint::WebAnswers,
         DecisionPoint::WebPageAnswers,
         DecisionPoint::WebFetchFallback,
         DecisionPoint::WebQueryKind,
         DecisionPoint::WebPrune,
-        DecisionPoint::MemoryExtractNow,
-        DecisionPoint::MemoryExtractSkip,
-        DecisionPoint::MemoryType,
-        DecisionPoint::MemoryDuplicate,
-        DecisionPoint::MemoryConsolidate,
-        DecisionPoint::CompactionKeep,
-        DecisionPoint::PermissionsYoloStage1,
-        DecisionPoint::PromptSuggestionGenerateGate,
     ];
 
     pub fn as_str(self) -> &'static str {
         match self {
-            DecisionPoint::RetrievalIntent => "retrieval.intent",
-            DecisionPoint::RetrievalAnswers => "retrieval.answers",
-            DecisionPoint::RetrievalSufficient => "retrieval.sufficient",
-            DecisionPoint::RetrievalPrune => "retrieval.prune",
             DecisionPoint::WebAnswers => "web.answers",
             DecisionPoint::WebPageAnswers => "web.page_answers",
             DecisionPoint::WebFetchFallback => "web.fetch_fallback",
             DecisionPoint::WebQueryKind => "web.query_kind",
             DecisionPoint::WebPrune => "web.prune",
-            DecisionPoint::MemoryExtractNow => "memory.extract_now",
-            DecisionPoint::MemoryExtractSkip => "memory.extract_skip",
-            DecisionPoint::MemoryType => "memory.type",
-            DecisionPoint::MemoryDuplicate => "memory.duplicate",
-            DecisionPoint::MemoryConsolidate => "memory.consolidate",
-            DecisionPoint::CompactionKeep => "compaction.keep",
-            DecisionPoint::PermissionsYoloStage1 => "permissions.yolo_stage1",
-            DecisionPoint::PromptSuggestionGenerateGate => "prompt_suggestion.generate_gate",
         }
     }
 
@@ -563,7 +527,7 @@ fn global_backend(
         .get_or_init(|| {
             backends::emrank::from_settings(&settings.emrank())
                 .map_err(|error| {
-                    crate::utils::debug::log_for_debugging(&format!(
+                    crate::runtime::log_for_debugging(&format!(
                         "DecisionProvider: emrank backend unavailable: {error}"
                     ));
                     error
@@ -576,8 +540,8 @@ fn global_backend(
 /// Read a credential file by path, trimming surrounding whitespace/newlines
 /// (decision-provider §8). Shared by every backend that takes a key file.
 pub fn read_api_key_file(path: &str) -> anyhow::Result<String> {
-    let expanded = crate::utils::permissions::path_validation::expand_tilde(path);
-    let path = std::path::PathBuf::from(expanded);
+    let expanded = crate::home::expand_path(path);
+    let path = expanded;
     let content = std::fs::read_to_string(&path)
         .map_err(|error| anyhow::anyhow!("cannot read {}: {error}", path.display()))?;
     let key = content.trim();
@@ -608,8 +572,9 @@ impl DecisionProvider {
         }
     }
 
-    pub fn from_nyan(nyan: &NyanSettings) -> Self {
-        Self::new(nyan.decision())
+    /// From the `decision` section; an absent section is all defaults.
+    pub fn from_config(settings: Option<DecisionSettings>) -> Self {
+        Self::new(settings.unwrap_or_default())
     }
 
     /// For tests: bypass the global emrank cell.
@@ -685,7 +650,7 @@ impl DecisionProvider {
             };
         }
         if questions.len() > self.settings.max_batch() as usize {
-            crate::utils::debug::log_for_debugging(&format!(
+            crate::runtime::log_for_debugging(&format!(
                 "DecisionProvider: {} batch of {} exceeds maxBatch {}; refusing",
                 point.as_str(),
                 questions.len(),
@@ -781,21 +746,6 @@ impl DecisionProvider {
             }
         }
     }
-
-    /// §5.2: warm the connection after the first user input. No-op when the
-    /// provider is disabled or prewarm is off.
-    pub fn prewarm(&self) {
-        if !self.settings.enabled() || !self.settings.emrank().prewarm() {
-            return;
-        }
-        // Only the concrete emrank backend knows how to warm itself; custom
-        // backends (tests) have nothing to warm.
-        if self.backend_override.is_none()
-            && let Some(backend) = global_backend(&self.settings)
-        {
-            backend.spawn_prewarm();
-        }
-    }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -805,7 +755,7 @@ impl DecisionProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::settings::nyan::DecisionPointConfig;
+    use crate::settings::DecisionPointConfig;
     use serde_json::json;
 
     /// A backend that returns a canned outcome and remembers one request.
@@ -874,7 +824,7 @@ mod tests {
         settings.max_input_tokens_per_session = Some(3_000_000);
         settings.points = Some(
             [(
-                "retrieval.answers".to_string(),
+                "web.answers".to_string(),
                 DecisionPointConfig {
                     mode: Some(mode),
                     model: None,
@@ -922,7 +872,7 @@ mod tests {
             let provider = build_provider(settings, Arc::clone(&backend));
             let verdict = provider
                 .decide(
-                    DecisionPoint::RetrievalAnswers,
+                    DecisionPoint::WebAnswers,
                     json!({"query": "x"}),
                     questions(),
                     &BTreeMap::new(),
@@ -947,7 +897,7 @@ mod tests {
             .collect();
         let verdict = provider
             .decide(
-                DecisionPoint::RetrievalAnswers,
+                DecisionPoint::WebAnswers,
                 json!({"query": "x", "candidate": "fn f() {}"}),
                 questions(),
                 &deterministic,
@@ -973,7 +923,7 @@ mod tests {
         let provider = build_provider(settings_with(DecisionMode::Active, 0.6), backend);
         let verdict = provider
             .decide(
-                DecisionPoint::RetrievalAnswers,
+                DecisionPoint::WebAnswers,
                 json!({}),
                 questions(),
                 &BTreeMap::new(),
@@ -993,7 +943,7 @@ mod tests {
         let provider = build_provider(settings_with(DecisionMode::Active, 0.6), backend);
         let verdict = provider
             .decide(
-                DecisionPoint::RetrievalAnswers,
+                DecisionPoint::WebAnswers,
                 json!({}),
                 questions(),
                 &BTreeMap::new(),
@@ -1017,7 +967,7 @@ mod tests {
         );
         let verdict = provider
             .decide(
-                DecisionPoint::RetrievalAnswers,
+                DecisionPoint::WebAnswers,
                 json!({}),
                 questions(),
                 &BTreeMap::new(),
@@ -1041,7 +991,7 @@ mod tests {
         let run = || async {
             provider
                 .decide(
-                    DecisionPoint::RetrievalAnswers,
+                    DecisionPoint::WebAnswers,
                     json!({}),
                     questions(),
                     &BTreeMap::new(),
@@ -1072,7 +1022,7 @@ mod tests {
         assert!(
             provider
                 .decide(
-                    DecisionPoint::RetrievalAnswers,
+                    DecisionPoint::WebAnswers,
                     json!({}),
                     questions(),
                     &BTreeMap::new(),
@@ -1092,7 +1042,7 @@ mod tests {
         assert_eq!(
             provider
                 .decide(
-                    DecisionPoint::RetrievalAnswers,
+                    DecisionPoint::WebAnswers,
                     json!({}),
                     questions(),
                     &BTreeMap::new(),
@@ -1116,7 +1066,7 @@ mod tests {
             .collect();
         let verdict = provider
             .decide(
-                DecisionPoint::RetrievalAnswers,
+                DecisionPoint::WebAnswers,
                 json!({}),
                 questions,
                 &BTreeMap::new(),
@@ -1146,7 +1096,7 @@ mod tests {
         .collect();
         let verdict = provider
             .decide(
-                DecisionPoint::RetrievalAnswers,
+                DecisionPoint::WebAnswers,
                 json!({"code": "let key = \"AKIAIOSFODNN7EXAMPLE\"; let t = \"ghp_abcdefghijklmnopqrstuvwxyz0123456789\";"}),
                 questions,
                 &BTreeMap::new(),
@@ -1177,7 +1127,7 @@ mod tests {
         abort.abort();
         let verdict = provider
             .decide(
-                DecisionPoint::RetrievalAnswers,
+                DecisionPoint::WebAnswers,
                 json!({}),
                 questions(),
                 &BTreeMap::new(),
@@ -1198,7 +1148,7 @@ mod tests {
         let provider = build_provider(settings_with(DecisionMode::Active, 0.6), backend);
         let verdict = provider
             .decide(
-                DecisionPoint::RetrievalAnswers,
+                DecisionPoint::WebAnswers,
                 json!({}),
                 questions(),
                 &BTreeMap::new(),
@@ -1213,7 +1163,7 @@ mod tests {
 
     #[test]
     fn every_decision_point_matches_the_settings_registry() {
-        let registry = crate::utils::settings::nyan::decision_point_names();
+        let registry = crate::settings::decision_point_names();
         let enum_names: Vec<&str> = DecisionPoint::ALL.iter().map(|p| p.as_str()).collect();
         assert_eq!(enum_names, registry);
         for point in DecisionPoint::ALL {
@@ -1221,7 +1171,7 @@ mod tests {
         }
         // Design decision 8: speculation is not wired and has no point.
         assert_eq!(DecisionPoint::from_str("speculation.start"), None);
-        assert_eq!(DecisionPoint::from_str("retrieval.nope"), None);
+        assert_eq!(DecisionPoint::from_str("web.nope"), None);
     }
 
     #[test]

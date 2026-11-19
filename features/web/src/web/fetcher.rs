@@ -1,6 +1,6 @@
 //! SSRF-checked WebFetch transport.
 //!
-//! @nyan: CC's WebFetch transport is retained only when `nyan.web` is absent.
+//! CC's WebFetch transport is retained only when `nyan.web` is absent.
 //! When this module is selected, every redirect is normalized and checked again,
 //! proxy mode is explicit, and a response is either fully accepted or discarded.
 
@@ -11,9 +11,9 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
 
-use crate::services::web::host_guard::{self, HostGuardConfig, HostGuardError, ValidatedUrl};
-use crate::tool::AbortController;
-use crate::utils::settings::nyan::{FetchVia, WebSettings};
+use crate::runtime::AbortController;
+use crate::settings::{FetchVia, WebSettings};
+use crate::web::host_guard::{self, HostGuardConfig, HostGuardError, ValidatedUrl};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RedirectHop {
@@ -270,27 +270,29 @@ async fn build_client(
     validated: &ValidatedUrl,
     config: &FetchConfig,
 ) -> Result<reqwest::Client, FetchError> {
-    crate::utils::tls_provider::install_crypto_provider();
-    let mut builder = crate::utils::proxy::client_builder()
+    let env = crate::net::ProcessEnv;
+    let proxy = match config.via {
+        FetchVia::Proxy => {
+            let Some(proxy_url) = crate::net::proxy_url(&env) else {
+                return Err(FetchError::ProxyUnconfigured);
+            };
+            // Explicit proxy, NO_PROXY ignored: a NO_PROXY match would
+            // silently turn a proxied fetch into direct I/O.
+            Some(proxy_url)
+        }
+        FetchVia::Direct => None,
+    };
+    let mut builder = crate::net::fetch_client_builder(&env, proxy.as_deref())
+        .map_err(|_| FetchError::InvalidResponse)?
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(config.connect_timeout)
         .timeout(config.timeout)
         .pool_idle_timeout(Duration::from_secs(90));
 
     match config.via {
-        FetchVia::Proxy => {
-            let env = crate::utils::process_env::snapshot();
-            let Some(proxy_url) = crate::utils::proxy::get_proxy_url(&env) else {
-                return Err(FetchError::ProxyUnconfigured);
-            };
-            let proxy = reqwest::Proxy::all(proxy_url).map_err(|_| FetchError::InvalidResponse)?;
-            // @nyan: do not call create_axios_instance here. Its NO_PROXY
-            // matcher would silently turn an explicit proxy fetch into direct I/O.
-            builder = builder.proxy(proxy);
-        }
+        FetchVia::Proxy => {}
         FetchVia::Direct => {
-            builder = builder.no_proxy();
-            // @nyan: the mock is on loopback, which the resolver check rejects
+            // the mock is on loopback, which the resolver check rejects
             // by design. Test builds skip pinning for it; production never does.
             #[cfg(test)]
             let pin = !config.allow_private_for_tests;
@@ -334,7 +336,7 @@ async fn send_request(
         .header(reqwest::header::ACCEPT, "text/html, text/plain, text/markdown, application/json, application/xml, application/pdf")
         .header(
             reqwest::header::USER_AGENT,
-            crate::utils::http::get_web_fetch_user_agent(),
+            crate::net::user_agent(),
         )
         .send();
     let mut signal = abort_controller.signal();
@@ -401,7 +403,7 @@ async fn convert_body(content_type: &str, body: &[u8]) -> Result<String, FetchEr
 }
 
 fn html_to_markdown(html: &str) -> String {
-    // @nyan: the converter keeps script/style text by default; a snapshot must
+    // the converter keeps script/style text by default; a snapshot must
     // hold page content only (external-search 4.3).
     let options = supermarkdown::Options::new()
         .exclude_selectors(
@@ -416,7 +418,7 @@ fn html_to_markdown(html: &str) -> String {
 }
 
 async fn convert_pdf(body: &[u8]) -> Result<String, FetchError> {
-    let snapshots = crate::utils::env_utils::get_config_home_dir().join("web-snapshots");
+    let snapshots = crate::home::riff_home().join("web-snapshots");
     let directory = snapshots.join("tmp");
     std::fs::create_dir_all(&directory).map_err(|_| FetchError::PdfConversionFailed)?;
     set_private_directory(&snapshots);
@@ -481,11 +483,11 @@ mod tests {
 
     #[tokio::test]
     async fn proxy_mode_without_proxy_is_named_and_does_not_connect() {
-        let _lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
-        let _http = crate::utils::test_env::EnvVarGuard::unset("http_proxy");
-        let _https = crate::utils::test_env::EnvVarGuard::unset("https_proxy");
-        let _http_upper = crate::utils::test_env::EnvVarGuard::unset("HTTP_PROXY");
-        let _https_upper = crate::utils::test_env::EnvVarGuard::unset("HTTPS_PROXY");
+        let _lock = crate::test_env::TEST_ENV_LOCK.lock().unwrap();
+        let _http = crate::test_env::EnvVarGuard::unset("http_proxy");
+        let _https = crate::test_env::EnvVarGuard::unset("https_proxy");
+        let _http_upper = crate::test_env::EnvVarGuard::unset("HTTP_PROXY");
+        let _https_upper = crate::test_env::EnvVarGuard::unset("HTTPS_PROXY");
         let config = FetchConfig::from_settings(&WebSettings::default());
         let error = fetch_url("https://example.com", &AbortController::default(), &config)
             .await
@@ -495,7 +497,7 @@ mod tests {
 
     #[test]
     fn pdf_conversion_uses_private_temp_path_helper() {
-        let path = PathBuf::from("/tmp/nyan-web-fetch-test.pdf");
+        let path = PathBuf::from("/tmp/riff-web-fetch-test.pdf");
         set_private_permissions(&path);
     }
 }
@@ -503,8 +505,8 @@ mod tests {
 #[cfg(test)]
 mod network_tests {
     use super::*;
-    use crate::services::web::test_support::{Route, serve};
-    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+    use crate::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+    use crate::web::test_support::{Route, serve};
 
     fn config() -> FetchConfig {
         let mut config = FetchConfig::for_local_mock();
@@ -530,10 +532,7 @@ mod network_tests {
         assert!(page.redirects.is_empty());
         let seen = &server.seen()[0];
         assert!(seen.header("accept").unwrap().contains("text/markdown"));
-        assert_eq!(
-            seen.header("user-agent").unwrap(),
-            crate::utils::http::get_web_fetch_user_agent()
-        );
+        assert_eq!(seen.header("user-agent").unwrap(), crate::net::user_agent());
     }
 
     #[tokio::test]
@@ -730,10 +729,11 @@ mod network_tests {
     #[tokio::test]
     async fn pdf_is_converted_by_pdftotext_and_leaves_no_temp_file() {
         let pdf = tiny_pdf("Hello from the PDF fixture");
-        let home = std::env::temp_dir().join(format!("nyan-pdf-{}", uuid::Uuid::new_v4().simple()));
+        let home = crate::test_env::scratch_root()
+            .join(format!("riff-pdf-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&home).unwrap();
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _home = EnvVarGuard::set("NYAN_CONFIG_DIR", &home);
+        let _home = crate::test_env::HomeGuard::set(&home);
         let server = serve(vec![(
             "/doc.pdf",
             Route::new(200, "application/pdf", pdf.clone()),

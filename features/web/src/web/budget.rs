@@ -1,13 +1,13 @@
 //! Session-scoped WebSearch/WebFetch budgets.
 //!
-//! @nyan: counts live in the process-wide session owner so main-thread and
+//! counts live in the process-wide session owner so main-thread and
 //! child-agent calls spend the same limits. `/clear` calls [`reset`].
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use crate::utils::settings::nyan::{WebFetchSettings, WebSearchSettings};
+use crate::settings::{WebFetchSettings, WebSearchSettings};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BudgetError {
@@ -215,8 +215,8 @@ mod tests {
     /// The session budget is process-wide, and the `search` / `fallback`
     /// suites drive real searches that charge it. Hold the same lock they do
     /// so a parallel search cannot move the counters underneath these asserts.
-    fn test_lock() -> crate::utils::test_env::TestEnvGuard<'static> {
-        let guard = crate::utils::test_env::TEST_ENV_LOCK
+    fn test_lock() -> crate::test_env::TestEnvGuard<'static> {
+        let guard = crate::test_env::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         reset();

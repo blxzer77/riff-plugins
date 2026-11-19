@@ -1,7 +1,7 @@
 //! Content-addressed WebFetch snapshots and local range reads.
 //!
-//! @nyan: the old in-process body LRU is replaced by a URL → latest hash index;
-//! the body is durable, globally scoped under `$NYAN_CONFIG_DIR`, and never
+//! the old in-process body LRU is replaced by a URL → latest hash index;
+//! the body is durable, globally scoped under `$RIFF_HOME`, and never
 //! overwritten when a page changes.
 
 use std::collections::HashMap;
@@ -107,10 +107,10 @@ fn index() -> &'static Mutex<HashMap<String, UrlIndexEntry>> {
 }
 
 pub fn snapshots_root() -> PathBuf {
-    crate::utils::env_utils::get_config_home_dir().join("web-snapshots")
+    crate::home::riff_home().join("web-snapshots")
 }
 
-pub fn save_nyan(page: &FetchedPage) -> Result<Snapshot, std::io::Error> {
+pub fn save_direct(page: &FetchedPage) -> Result<Snapshot, std::io::Error> {
     let hash = sha256_hex(&page.raw_body);
     let metadata = SnapshotMetadata {
         url: page.original_url.clone(),
@@ -119,7 +119,7 @@ pub fn save_nyan(page: &FetchedPage) -> Result<Snapshot, std::io::Error> {
         status: page.status,
         content_type: page.content_type.clone(),
         fetched_at: page.fetched_at,
-        fetched_by: "nyan".to_string(),
+        fetched_by: "riff".to_string(),
         sha256: hash.clone(),
         bytes: page.raw_body.len(),
         provider_format: None,
@@ -576,13 +576,13 @@ mod tests {
     }
 
     fn with_config_home<T>(name: &str, run: impl FnOnce(&std::path::Path) -> T) -> T {
-        let _lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
-        let dir = std::env::temp_dir().join(format!(
-            "nyan-snapshot-{name}-{}",
+        let _lock = crate::test_env::TEST_ENV_LOCK.lock().unwrap();
+        let dir = crate::test_env::scratch_root().join(format!(
+            "riff-snapshot-{name}-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        let guard = crate::utils::test_env::EnvVarGuard::set("NYAN_CONFIG_DIR", &dir);
+        let guard = crate::test_env::HomeGuard::set(&dir);
         clear_index();
         let result = run(&dir);
         drop(guard);
@@ -606,9 +606,9 @@ mod tests {
     #[test]
     fn snapshots_are_content_addressed_and_change_creates_a_new_version() {
         with_config_home("versions", |root| {
-            let first = save_nyan(&page("version one")).unwrap();
-            let same = save_nyan(&page("version one")).unwrap();
-            let second = save_nyan(&page("version two")).unwrap();
+            let first = save_direct(&page("version one")).unwrap();
+            let same = save_direct(&page("version one")).unwrap();
+            let second = save_direct(&page("version two")).unwrap();
             assert_eq!(first.hash, same.hash, "same bytes, same snapshot");
             assert_ne!(first.hash, second.hash);
             assert!(
@@ -617,7 +617,7 @@ mod tests {
             );
             let reread = read(&first.hash).unwrap();
             assert_eq!(reread.text, "version one");
-            assert_eq!(reread.metadata.fetched_by, "nyan");
+            assert_eq!(reread.metadata.fetched_by, "riff");
             assert_eq!(reread.metadata.sha256, first.hash);
 
             let hash_dir = root.join("web-snapshots").join(&first.hash[..2]);
@@ -641,7 +641,7 @@ mod tests {
     #[test]
     fn the_url_index_expires_after_fifteen_minutes_but_range_reads_do_not() {
         with_config_home("ttl", |_root| {
-            let snapshot = save_nyan(&page("body")).unwrap();
+            let snapshot = save_direct(&page("body")).unwrap();
             assert_eq!(
                 lookup_latest("https://example.com/doc").unwrap().hash,
                 snapshot.hash
@@ -662,7 +662,7 @@ mod tests {
     #[test]
     fn a_range_read_finds_the_snapshot_after_the_index_is_gone() {
         with_config_home("restart", |_root| {
-            let snapshot = save_nyan(&page("persisted body")).unwrap();
+            let snapshot = save_direct(&page("persisted body")).unwrap();
             clear_index();
             let found = lookup_any("https://example.com/doc").expect("disk scan finds the file");
             assert_eq!(found.hash, snapshot.hash);
@@ -699,7 +699,7 @@ mod tests {
     #[test]
     fn retention_removes_files_older_than_the_window_only() {
         with_config_home("retention", |root| {
-            let snapshot = save_nyan(&page("old")).unwrap();
+            let snapshot = save_direct(&page("old")).unwrap();
             let old = std::time::SystemTime::now() - Duration::from_secs(40 * 24 * 60 * 60);
             let file = std::fs::File::options()
                 .write(true)
@@ -707,7 +707,7 @@ mod tests {
                 .unwrap();
             file.set_modified(old).unwrap();
             drop(file);
-            let fresh = save_nyan(&page("new")).unwrap();
+            let fresh = save_direct(&page("new")).unwrap();
             assert_eq!(cleanup_retention(30).unwrap(), 1);
             assert!(!snapshot.path.exists());
             assert!(fresh.path.exists());
@@ -734,7 +734,7 @@ mod tests {
             status: 200,
             content_type: "text/html".to_string(),
             fetched_at: Utc::now(),
-            fetched_by: "nyan".to_string(),
+            fetched_by: "riff".to_string(),
             sha256: "a".repeat(64),
             bytes: 12,
             provider_format: None,

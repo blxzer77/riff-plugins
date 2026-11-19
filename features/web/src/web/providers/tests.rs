@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::client::{Call, fetch_call, search_call};
 use super::*;
-use crate::services::web::test_support::key_file;
+use crate::web::test_support::key_file;
 
 // ════════════════════════════════════════════════════════════
 // Mock server
@@ -859,7 +859,7 @@ async fn other_providers_do_not_use_the_searxng_health_machine() {
 // Construction from settings
 // ════════════════════════════════════════════════════════════
 
-fn settings(json: Value) -> crate::utils::settings::nyan::WebSettings {
+fn settings(json: Value) -> crate::settings::WebSettings {
     serde_json::from_value(json).unwrap()
 }
 
@@ -982,7 +982,7 @@ fn configuring_only_searxng_still_loads_every_builtin() {
     assert!(web.provider("brave").enabled);
     assert_eq!(
         web.provider("brave").api_key_file.as_deref(),
-        Some("~/.nyan/keys/brave")
+        Some("$RIFF_HOME/keys/brave")
     );
 }
 
@@ -1020,8 +1020,8 @@ fn capabilities_match_the_provider_table() {
 }
 
 fn tempfile_dir() -> std::path::PathBuf {
-    let path =
-        std::env::temp_dir().join(format!("nyan-providers-{}", uuid::Uuid::new_v4().simple()));
+    let path = crate::test_env::scratch_root()
+        .join(format!("riff-providers-{}", uuid::Uuid::new_v4().simple()));
     std::fs::create_dir_all(&path).unwrap();
     path
 }

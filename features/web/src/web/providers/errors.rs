@@ -1,6 +1,6 @@
 //! Per-provider HTTP error classification (external-search 2.3 / 3.6).
 //!
-//! @nyan: a quota error is not a rate limit. Each provider signals "out of
+//! a quota error is not a rate limit. Each provider signals "out of
 //! credits" differently, so the status alone is not enough. Raw response
 //! bodies never leave this module: they are redacted and logged for debugging
 //! only, and the caller gets a named [`ProviderError`].
@@ -9,7 +9,7 @@ use reqwest::header::HeaderMap;
 use serde_json::Value;
 
 use super::{ProviderError, ProviderKind};
-use crate::services::web::redact::redact_error;
+use crate::web::redact::redact_error;
 
 const EXA_QUOTA_CODES: [&str; 3] = [
     "NO_MORE_CREDITS",
@@ -78,11 +78,11 @@ fn exa_quota_code(body: &[u8]) -> bool {
 /// logged for it.
 pub(super) fn log_failure(kind: ProviderKind, status: u16, body: &[u8], api_key: Option<&str>) {
     if kind == ProviderKind::AnySearch && status == 402 {
-        crate::utils::debug::log_for_debugging("web provider anysearch: HTTP 402 (body withheld)");
+        crate::runtime::log_for_debugging("web provider anysearch: HTTP 402 (body withheld)");
         return;
     }
     let secrets = api_key.map(str::to_string).into_iter().collect::<Vec<_>>();
-    crate::utils::debug::log_for_debugging(&format!(
+    crate::runtime::log_for_debugging(&format!(
         "web provider {}: HTTP {status}: {}",
         kind.name(),
         redact_error(&String::from_utf8_lossy(body), &secrets)

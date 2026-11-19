@@ -1,6 +1,6 @@
 //! Shared service-health state machine (README §1.9, retrieval 3.2).
 //!
-//! @nyan: every self-hosted service (embedding, rerank, Qdrant, SearXNG) and
+//! every self-hosted service (embedding, rerank, Qdrant, SearXNG) and
 //! the Decision Provider backend shares one `Ready ⇄ Down(until)` machine.
 //! The point is to fail *fast*: a powered-off corp-pc does not refuse a
 //! connection, it hangs until a timeout. After the first failure the service
@@ -271,10 +271,8 @@ impl ServiceHealth {
             );
             health.finish_probe(ok);
         };
-        if let Some(handle) = crate::utils::process_runtime::runtime_handle_for_detached_work() {
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(future);
-        } else if tokio::runtime::Handle::try_current().is_ok() {
-            tokio::spawn(future);
         } else {
             // Cannot probe: release the claim and keep the service Down, so a
             // later caller (on a runtime) can try again.

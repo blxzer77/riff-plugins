@@ -18,3 +18,4 @@ agent/
 # Agent runtime state
 .claude/*.lock
 .claude/settings.local.json
+/target/

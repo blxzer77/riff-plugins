@@ -1,6 +1,6 @@
 //! Search and fetch provider adapters.
 //!
-//! @nyan: provider calls receive only the model's query or the explicitly
+//! provider calls receive only the model's query or the explicitly
 //! requested URL. Keys are read from configured files, never from settings JSON
 //! or request input. Provider response bodies are parsed into neutral types and
 //! raw error bodies never cross this boundary.
@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 
-use crate::utils::settings::nyan::WebSettings;
+use crate::settings::{ResolvedProvider, WebSettings};
 
 use client::ProviderClient;
 
@@ -407,29 +407,37 @@ pub fn configured_providers(
     (providers, failures)
 }
 
-/// `Ok(None)` when no key file is configured or the file does not exist; an
-/// unreadable or empty file is an auth failure.
-fn read_key(path: Option<&str>) -> Result<Option<String>, ProviderError> {
-    let Some(path) = path else {
-        return Ok(None);
-    };
-    let path = expand_path(path);
-    let value = match std::fs::read_to_string(path) {
-        Ok(value) => value,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(_) => return Err(ProviderError::Auth),
-    };
-    let value = value.trim().to_string();
-    if value.is_empty() {
-        return Err(ProviderError::Auth);
+/// The key file wins; `RIFF_KEY_<PROVIDER>` is the fallback when the file does
+/// not exist (design 3.2). `Ok(None)` when neither is present; an unreadable
+/// or empty file is an auth failure.
+fn read_key(provider: &str, path: Option<&str>) -> Result<Option<String>, ProviderError> {
+    if let Some(path) = path {
+        match std::fs::read_to_string(crate::home::expand_path(path)) {
+            Ok(value) => {
+                let value = value.trim().to_string();
+                if value.is_empty() {
+                    return Err(ProviderError::Auth);
+                }
+                return Ok(Some(value));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err(ProviderError::Auth),
+        }
     }
-    Ok(Some(value))
+    Ok(std::env::var(key_env_var(provider))
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty()))
 }
 
-fn expand_path(path: &str) -> std::path::PathBuf {
-    if let Some(rest) = path.strip_prefix("~/") {
-        crate::utils::node_os::homedir().join(rest)
-    } else {
-        std::path::PathBuf::from(path)
-    }
+/// Whether `read_key` would find a key, without reporting which.
+pub fn has_key(provider: &str, resolved: &ResolvedProvider) -> bool {
+    matches!(
+        read_key(provider, resolved.api_key_file.as_deref()),
+        Ok(Some(_))
+    )
+}
+
+pub fn key_env_var(provider: &str) -> String {
+    format!("RIFF_KEY_{}", provider.to_ascii_uppercase())
 }

@@ -1,6 +1,6 @@
 //! The shared System One client (decision-provider.md §1.4, §5).
 //!
-//! @nyan: System One is the only protocol the decision provider speaks, and
+//! System One is the only protocol the decision provider speaks, and
 //! every provider of it differs in three small ways, not in its whole shape:
 //! endpoint path, request envelope, auth header. So the reusable part lives
 //! here — keep-alive client, `User-Agent: nyan/<version>`, Bearer key, health
@@ -27,23 +27,22 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
 
-use crate::services::decision::{
+use crate::decision::{
     Answer, DecisionBackend, DecisionOutcome, DecisionRequest, DecisionUsage, FallbackReason,
     Question, Receipt, StateDigest,
 };
-use crate::services::service_health::{self, CallPermit, FailureKind, ProbeFn};
-use crate::tool::AbortController;
+use crate::runtime::AbortController;
+use crate::service_health::{self, CallPermit, FailureKind, ProbeFn};
 
 /// `User-Agent: nyan/<version>` — the default reqwest UA is filtered by
 /// Cloudflare in front of EMRank (403, error code 1010), so this header is not
 /// optional.
 pub fn user_agent() -> String {
-    format!("nyan/{}", crate::constants::product::VERSION)
+    crate::net::user_agent()
 }
 
 /// Differences between services that serve System One models.
@@ -119,7 +118,6 @@ pub struct SystemOneClient {
     /// that looked like a dead backend. Callers pass the configured `fast`
     /// alias, which is the model real decisions use.
     probe_model: String,
-    prewarmed: AtomicBool,
 }
 
 impl std::fmt::Debug for SystemOneClient {
@@ -150,7 +148,6 @@ impl SystemOneClient {
             health,
             transport,
             probe_model: probe_model.into(),
-            prewarmed: AtomicBool::new(false),
         });
         backend.install_probe();
         backend
@@ -166,30 +163,6 @@ impl SystemOneClient {
             Box::pin(async move { probe.ping(Duration::from_millis(2_000)).await })
         });
         self.health.set_probe(Some(future));
-    }
-
-    /// §5.2: warm the connection once after the first user input. Failures are
-    /// silent — a failed warm simply means the first real decision pays the
-    /// handshake or falls back.
-    pub fn spawn_prewarm(self: &Arc<Self>) {
-        if self.prewarmed.swap(true, Ordering::Relaxed) {
-            return;
-        }
-        let backend = Arc::clone(self);
-        let future = async move {
-            if backend.ping(Duration::from_millis(2_000)).await.is_err() {
-                backend.prewarmed.store(false, Ordering::Relaxed);
-            }
-        };
-        if let Some(handle) = crate::utils::process_runtime::runtime_handle_for_detached_work() {
-            handle.spawn(future);
-        } else if tokio::runtime::Handle::try_current().is_ok() {
-            // Tests and embedded callers.
-            tokio::spawn(future);
-        } else {
-            // No runtime: allow a later attempt.
-            self.prewarmed.store(false, Ordering::Relaxed);
-        }
     }
 
     async fn ping(&self, timeout: Duration) -> Result<(), ()> {
@@ -242,7 +215,7 @@ impl SystemOneClient {
             // has not enabled is a configuration error, not an unreachable
             // backend, and the old mapping hid the difference.
             let detail = error_summary(&bytes);
-            crate::utils::debug::log_for_debugging(&format!(
+            crate::runtime::log_for_debugging(&format!(
                 "DecisionProvider: HTTP {} ({}) for model {:?}{}",
                 status.as_u16(),
                 reason.as_str(),
@@ -390,9 +363,7 @@ impl PostError {
     fn transport(error: reqwest::Error) -> Self {
         // Debug log only: never the key or the body (decision-provider §3.6
         // applies the same rule to provider errors).
-        crate::utils::debug::log_for_debugging(&format!(
-            "DecisionProvider: transport error: {error}"
-        ));
+        crate::runtime::log_for_debugging(&format!("DecisionProvider: transport error: {error}"));
         let timed_out = error.is_timeout();
         Self {
             reason: if timed_out {
@@ -579,9 +550,9 @@ impl DecisionBackend for SystemOneClient {
         req: &'a DecisionRequest,
         deadline: Duration,
         abort: &'a AbortController,
-    ) -> crate::services::decision::BackendFuture<'a> {
+    ) -> crate::decision::BackendFuture<'a> {
         Box::pin(async move {
-            let digest = crate::services::decision::digest_state(&req.state);
+            let digest = crate::decision::digest_state(&req.state);
             let backend_name = self.transport.name();
             let fallback = |reason: FallbackReason, request_id: Option<String>, latency| {
                 DecisionOutcome::Fallback {
@@ -637,7 +608,7 @@ impl DecisionBackend for SystemOneClient {
                     if counts_as_health_failure(error.failure) {
                         self.health.record_failure(error.failure);
                     }
-                    crate::utils::debug::log_for_debugging(&format!(
+                    crate::runtime::log_for_debugging(&format!(
                         "DecisionProvider: {} {} -> {} after {} ms",
                         backend_name,
                         req.point.as_str(),
@@ -651,7 +622,7 @@ impl DecisionBackend for SystemOneClient {
             let invalid = |request_id: Option<String>| {
                 // A malformed or unparseable response fails this decision only;
                 // it is not one of the documented health signals (§5.2).
-                crate::utils::debug::log_for_debugging(&format!(
+                crate::runtime::log_for_debugging(&format!(
                     "DecisionProvider: {} {} -> {} after {} ms",
                     backend_name,
                     req.point.as_str(),
@@ -699,7 +670,7 @@ impl DecisionBackend for SystemOneClient {
             self.health.record_success();
             let usage = parse_usage(response);
             // Logging keeps only the digest and counts (decision-provider §7).
-            crate::utils::debug::log_for_debugging(&format!(
+            crate::runtime::log_for_debugging(&format!(
                 "DecisionProvider: {} {} answered {} question(s) in {} ms (model {response_model}, request {}, state {}…/{} bytes)",
                 backend_name,
                 req.point.as_str(),
@@ -743,8 +714,8 @@ async fn wait_aborted(abort: &AbortController) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::decision::DecisionPoint;
-    use crate::services::service_health::{ServiceHealth, ServiceKind};
+    use crate::decision::DecisionPoint;
+    use crate::service_health::{ServiceHealth, ServiceKind};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     /// A localhost mock that answers each connection with the next queued
@@ -817,7 +788,7 @@ mod tests {
     }
 
     fn client(url: &str) -> Arc<SystemOneClient> {
-        crate::utils::tls_provider::install_crypto_provider();
+        crate::net::install_crypto_provider();
         SystemOneClient::with_transport(
             url,
             "test-key\n",
@@ -839,7 +810,7 @@ mod tests {
             Question::noul("Does this code answer the query?"),
         );
         DecisionRequest {
-            point: DecisionPoint::RetrievalAnswers,
+            point: DecisionPoint::WebAnswers,
             model: "typesafe/jev-1.14.0".to_string(),
             state: json!({"query": "where is auth handled?", "code": "fn auth() {}"}),
             questions,
@@ -881,7 +852,7 @@ mod tests {
 
             let captured = mock.handle.await.unwrap();
             let raw = &captured[0];
-            assert!(raw.to_lowercase().contains("user-agent: nyan/"), "{raw}");
+            assert!(raw.to_lowercase().contains("user-agent: riff/"), "{raw}");
             assert!(
                 raw.to_lowercase()
                     .contains("authorization: bearer test-key"),
@@ -944,7 +915,7 @@ mod tests {
                 Question::score("How relevant?", &["none", "partial", "direct"]),
             );
             let request = DecisionRequest {
-                point: DecisionPoint::RetrievalIntent,
+                point: DecisionPoint::WebQueryKind,
                 model: "typesafe/jev-1.14.0".to_string(),
                 state: json!({"query": "who calls auth"}),
                 questions,
@@ -1178,7 +1149,7 @@ mod tests {
                 "probe must use the configured model: {}",
                 raw[0]
             );
-            assert!(!raw[0].contains("nyan-probe"), "{}", raw[0]);
+            assert!(!raw[0].contains("riff-probe"), "{}", raw[0]);
         });
     }
 
@@ -1221,7 +1192,7 @@ mod tests {
     #[test]
     fn a_down_service_is_skipped_without_reaching_the_network() {
         runtime().block_on(async {
-            crate::utils::tls_provider::install_crypto_provider();
+            crate::net::install_crypto_provider();
             let backend = SystemOneClient::with_transport(
                 "http://127.0.0.1:1",
                 "k",
@@ -1290,10 +1261,7 @@ mod tests {
     }
 
     #[test]
-    fn the_user_agent_is_nyan_versioned() {
-        assert_eq!(
-            user_agent(),
-            format!("nyan/{}", crate::constants::product::VERSION)
-        );
+    fn the_user_agent_is_riff_versioned() {
+        assert_eq!(user_agent(), crate::net::user_agent());
     }
 }

@@ -1,6 +1,6 @@
 //! Deterministic multi-provider WebSearch aggregation.
 //!
-//! @nyan: all enabled search providers are queried in parallel. Provider order
+//! all enabled search providers are queried in parallel. Provider order
 //! is never a fallback signal; RRF and byte-order URL ties make the final list
 //! reproducible before optional Qwen3 reranking.
 //!
@@ -14,13 +14,13 @@ use std::time::{Duration, Instant};
 
 use futures::future::join_all;
 
-use crate::services::rerank::{self, RerankClient, RerankKind, RerankRequest};
-use crate::services::web::budget;
-use crate::services::web::decision::{self, WebDecisions};
-use crate::services::web::provider_health::{self, Capability};
-use crate::services::web::providers::{self, Hit, ProviderError, SearchRequest};
-use crate::tool::AbortController;
-use crate::utils::settings::nyan::{WebSearchSettings, WebSettings};
+use crate::rerank::{self, RerankClient, RerankKind, RerankRequest};
+use crate::runtime::AbortController;
+use crate::settings::{WebSearchSettings, WebSettings};
+use crate::web::budget;
+use crate::web::decision::{self, WebDecisions};
+use crate::web::provider_health::{self, Capability};
+use crate::web::providers::{self, Hit, ProviderError, SearchRequest};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SearchFailure {
@@ -254,7 +254,7 @@ pub async fn search_with(
                 None
             };
             if let Err(error) = budget::reserve_provider(&name, max_calls) {
-                crate::utils::debug::log_for_debugging(&format!("web search: {error}"));
+                crate::runtime::log_for_debugging(&format!("web search: {error}"));
                 return (name, Err(("budget_exhausted".to_string(), false)));
             }
             let deadline = per_provider_deadline;
@@ -336,7 +336,7 @@ pub async fn search_with(
     merged.retain(|hit| domain_allowed(&hit.url, allowed_domains, blocked_domains));
     let hits = cap_domains(merged, search_settings.domain_cap() as usize, max_results);
     // §7: only the final, visible hits can be used by a later WebFetch.
-    crate::services::web::decision::register_answer_probe(&hits);
+    crate::web::decision::register_answer_probe(&hits);
     remember_candidates(hits.iter().map(|hit| hit.url.clone()).collect());
     Ok(SearchOutcome {
         hits,
@@ -591,9 +591,9 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::*;
-    use crate::services::decision::{Answer, FallbackReason};
-    use crate::services::service_health::{ServiceHealth, ServiceKind};
-    use crate::services::web::test_support::{
+    use crate::decision::{Answer, FallbackReason};
+    use crate::service_health::{ServiceHealth, ServiceKind};
+    use crate::web::test_support::{
         Route, ScriptedBackend, key_file, only_mocked_providers, serve,
     };
 
@@ -608,18 +608,15 @@ mod tests {
     }
 
     fn test_lock() -> (
-        crate::utils::test_env::TestEnvGuard<'static>,
+        crate::test_env::TestEnvGuard<'static>,
         std::sync::MutexGuard<'static, ()>,
     ) {
-        let env = crate::utils::test_env::TEST_ENV_LOCK
+        let env = crate::test_env::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         budget::reset();
         let health = provider_health::test_lock();
-        crate::services::service_health::shared(
-            crate::services::service_health::ServiceKind::Searxng,
-        )
-        .record_success();
+        crate::service_health::shared(crate::service_health::ServiceKind::Searxng).record_success();
         (env, health)
     }
 
@@ -660,7 +657,7 @@ mod tests {
     }
 
     fn rerank_client(url: &str, health: std::sync::Arc<ServiceHealth>) -> RerankClient {
-        crate::utils::tls_provider::install_crypto_provider();
+        crate::net::install_crypto_provider();
         RerankClient::with_client(
             url,
             "qwen3-reranker-test",
@@ -873,7 +870,7 @@ mod tests {
             json!({"search": {"maxConcurrentSearches": 1, "deadlineMs": 300, "perProviderDeadlineMs": 5000}}),
         );
         // Occupy the only concurrency slot for longer than the total deadline.
-        let mut held = crate::utils::settings::nyan::WebSearchSettings::default();
+        let mut held = crate::settings::WebSearchSettings::default();
         held.max_concurrent_searches = Some(1);
         let permit = budget::begin_search(&held, Duration::from_secs(5))
             .await
@@ -1247,7 +1244,7 @@ mod tests {
 
     fn flags(
         answer: impl Fn(&str) -> bool + Send + Sync + 'static,
-    ) -> impl Fn(&crate::services::decision::DecisionRequest) -> BTreeMap<String, Answer> {
+    ) -> impl Fn(&crate::decision::DecisionRequest) -> BTreeMap<String, Answer> {
         move |request| {
             request
                 .questions
@@ -1307,7 +1304,7 @@ mod tests {
         let requests = backend.requests();
         let answers = requests
             .iter()
-            .filter(|request| request.point == crate::services::decision::DecisionPoint::WebAnswers)
+            .filter(|request| request.point == crate::decision::DecisionPoint::WebAnswers)
             .collect::<Vec<_>>();
         assert_eq!(answers.len(), 1);
         assert_eq!(answers[0].questions.len(), 3, "one question per candidate");
@@ -1357,7 +1354,7 @@ mod tests {
             json!({}),
         );
         let (provider, _) = ScriptedBackend::provider(|request| match request.point {
-            crate::services::decision::DecisionPoint::WebQueryKind => [(
+            crate::decision::DecisionPoint::WebQueryKind => [(
                 "kind".to_string(),
                 Answer::Choice {
                     choice: "chinese".to_string(),
@@ -1429,8 +1426,8 @@ mod tests {
             .iter()
             .map(|request| request.point)
             .collect::<Vec<_>>();
-        assert!(points.contains(&crate::services::decision::DecisionPoint::WebPrune));
-        assert!(points.contains(&crate::services::decision::DecisionPoint::WebAnswers));
+        assert!(points.contains(&crate::decision::DecisionPoint::WebPrune));
+        assert!(points.contains(&crate::decision::DecisionPoint::WebAnswers));
     }
 
     // ── pure helpers ───────────────────────────────────────────
@@ -1831,8 +1828,8 @@ mod tests {
     async fn acceptance_7_key_change_clears_cooldown_immediately() {
         let _lock = test_lock();
         let server = serve(vec![("/search", search_route())]).await;
-        let dir =
-            std::env::temp_dir().join(format!("nyan-health-key-{}", uuid::Uuid::new_v4().simple()));
+        let dir = crate::test_env::scratch_root()
+            .join(format!("riff-health-key-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         let key_path = dir.join("key");
         std::fs::write(&key_path, "first-key\n").unwrap();
@@ -1919,8 +1916,8 @@ mod tests {
             Instant::now()
         ));
 
-        // /clear resets provider health!
-        crate::commands::clear::caches::clear_session_caches(&std::collections::HashSet::new());
+        // `riff web reset` clears provider health.
+        crate::web::reset_session();
         assert!(!provider_health::is_hard_cooling_down_at(
             "exa",
             Capability::Search,

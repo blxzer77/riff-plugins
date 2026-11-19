@@ -1,7 +1,7 @@
-//! @nyan: the one decision-provider JSONL log (decision-provider §7).
+//! the one decision-provider JSONL log (decision-provider §7).
 //!
 //! Every point appends one JSON object per decision to
-//! `$NYAN_CONFIG_DIR/decision/decisions.jsonl`. Records are self-describing:
+//! `$RIFF_HOME/decision/decisions.jsonl`. Records are self-describing:
 //! each carries `point`, `outcome` and, where applicable, `mode` and latency,
 //! so `/decision` can aggregate them without knowing point-specific payloads.
 
@@ -10,14 +10,14 @@ use std::path::PathBuf;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::services::decision::{DecisionOutcome, DecisionPoint, FallbackReason};
+use crate::decision::{DecisionOutcome, DecisionPoint, FallbackReason};
 
-/// `$NYAN_CONFIG_DIR/decision`.
+/// `$RIFF_HOME/decision`.
 pub fn log_dir() -> PathBuf {
-    crate::utils::env_utils::get_config_home_dir().join("decision")
+    crate::home::riff_home().join("decision")
 }
 
-/// `$NYAN_CONFIG_DIR/decision/decisions.jsonl`.
+/// `$RIFF_HOME/decision/decisions.jsonl`.
 pub fn log_path() -> PathBuf {
     log_dir().join("decisions.jsonl")
 }
@@ -114,7 +114,7 @@ pub fn log_outcome(point: DecisionPoint, outcome: &DecisionOutcome) {
         detail,
     };
     if let Err(error) = append(&record) {
-        crate::utils::debug::log_for_debugging(&format!(
+        crate::runtime::log_for_debugging(&format!(
             "DecisionProvider: cannot append {}: {error}",
             point.as_str()
         ));
@@ -124,17 +124,17 @@ pub fn log_outcome(point: DecisionPoint, outcome: &DecisionOutcome) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::decision::{Answer, Receipt};
-    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+    use crate::decision::{Answer, Receipt};
+    use crate::test_env::TEST_ENV_LOCK;
 
     fn outcome(answer: Option<Answer>, agreement: bool) -> DecisionOutcome {
         let mut receipt = Receipt {
-            point: "retrieval.answers".into(),
+            point: "web.answers".into(),
             backend: "mock".into(),
             model: "mock-model".into(),
             latency: std::time::Duration::from_millis(42),
             request_id: Some("req_1".into()),
-            state: crate::services::decision::StateDigest {
+            state: crate::decision::StateDigest {
                 sha256: "abc".into(),
                 bytes: 12,
             },
@@ -158,18 +158,18 @@ mod tests {
     #[test]
     fn logs_answers_fallbacks_and_shadow_outcomes_with_agreement() {
         let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let dir = std::env::temp_dir().join(format!(
-            "nyan-decision-log-{}",
+        let dir = crate::test_env::scratch_root().join(format!(
+            "riff-decision-log-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        let _env = EnvVarGuard::set("NYAN_CONFIG_DIR", &dir);
+        let _env = crate::test_env::HomeGuard::set(&dir);
 
         log_outcome(
-            DecisionPoint::RetrievalAnswers,
+            DecisionPoint::WebAnswers,
             &outcome(Some(Answer::Noul { probability: 0.9 }), true),
         );
-        log_outcome(DecisionPoint::RetrievalIntent, &outcome(None, false));
+        log_outcome(DecisionPoint::WebQueryKind, &outcome(None, false));
         let mut shadow = outcome(Some(Answer::Noul { probability: 0.9 }), false);
         if let DecisionOutcome::Answered { receipt, .. } = shadow {
             shadow = DecisionOutcome::Fallback {
@@ -177,12 +177,12 @@ mod tests {
                 receipt,
             };
         }
-        log_outcome(DecisionPoint::RetrievalPrune, &shadow);
+        log_outcome(DecisionPoint::WebPrune, &shadow);
         let mut multi = outcome(Some(Answer::Noul { probability: 0.9 }), true);
         if let DecisionOutcome::Answered { receipt, .. } = &mut multi {
             receipt.agreement.insert("q2".into(), false);
         }
-        log_outcome(DecisionPoint::RetrievalSufficient, &multi);
+        log_outcome(DecisionPoint::WebPageAnswers, &multi);
 
         let text = std::fs::read_to_string(log_path()).unwrap();
         let records = text
@@ -210,14 +210,14 @@ mod tests {
     #[test]
     fn disabled_decisions_are_not_logged() {
         let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let dir = std::env::temp_dir().join(format!(
-            "nyan-decision-log-off-{}",
+        let dir = crate::test_env::scratch_root().join(format!(
+            "riff-decision-log-off-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        let _env = EnvVarGuard::set("NYAN_CONFIG_DIR", &dir);
+        let _env = crate::test_env::HomeGuard::set(&dir);
         log_outcome(
-            DecisionPoint::RetrievalAnswers,
+            DecisionPoint::WebAnswers,
             &DecisionOutcome::Fallback {
                 reason: FallbackReason::Disabled,
                 receipt: Receipt::default(),
