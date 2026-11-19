@@ -8,10 +8,11 @@ __pycache__/
 # Eval workspaces (contain skill snapshots; keep out of git and skill discovery)
 .workspace/
 
-# Generic agent install output
-.agents/
+# Generic agent install output (.agents/plugins/ is not ignored: it can hold a
+# committed marketplace file)
+.agents/skills/
 # ...except inside eval fixtures, where a project-local skill is part of the fixture
-!evals/*/files/*/.agents/
+!evals/*/files/*/.agents/skills/
 agent/
 
 # Agent runtime state

@@ -1,13 +1,18 @@
-# riff-skills
+# riff-plugins
 
-A repository of Agent Skills (https://agentskills.io/specification) for software
-engineering work: writing tests and ADRs, selecting technologies, designing modules
-and APIs, reviewing code and designs, and building LLM applications. Skills must work
-in any spec-compliant agent; no skill may depend on one vendor's client.
+Extensions for coding agents, written once and adapted to each agent. Today it holds
+Agent Skills (https://agentskills.io/specification) for software engineering work:
+writing tests and ADRs, selecting technologies, designing modules and APIs,
+reviewing code and designs, and building LLM applications. Features packaged as
+plugins come later. Skills must work in any spec-compliant agent; no skill may
+depend on one vendor's client. Formerly `riff-skills`.
 
 ## Layout
 
 - `skills/<name>/` — one skill per directory; `name` in `SKILL.md` equals the directory name.
+- `features/<name>/` — one feature per directory (none yet); see `features/README.md`.
+- `plugins/<plugin>/` — one plugin per directory with each agent's manifest side by
+  side (none yet); see `plugins/README.md`.
 - `evals/<name>/` — development-only output cases, trigger queries, fixtures, and checks.
 - `template/SKILL.template.md` — starting point for a new skill; it is not installable.
 - `scripts/validate.py` — repository validator; CI runs it on every push.

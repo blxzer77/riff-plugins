@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate riff-skills against the Agent Skills spec and this repository's conventions.
+"""Validate riff-plugins' skills against the Agent Skills spec and this repository's conventions.
 
 Checks every directory under skills/ (or the paths given):
   spec       frontmatter fields, name and description rules, name == directory

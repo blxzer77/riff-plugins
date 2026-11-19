@@ -55,7 +55,7 @@
     "set": "train"
   },
   {
-    "query": "install the riff-skills repo skills into my codex setup",
+    "query": "install the riff-plugins repo skills into my codex setup",
     "should_trigger": false,
     "set": "validation"
   },

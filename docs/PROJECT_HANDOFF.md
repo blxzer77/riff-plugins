@@ -1,4 +1,4 @@
-# riff-skills 项目交接
+# riff-plugins 项目交接（原 riff-skills）
 
 > 最后更新：2026-11-16
 > 当前分支：`main`
@@ -6,7 +6,7 @@
 
 ## 目标
 
-riff-skills 是一个面向多种 coding agent 的、厂商中立的 Agent Skills 仓库。目标不是收集尽可能多的知识，而是把个人项目中 agent 容易遗漏、容易拍脑袋、容易过度设计的工程行为，沉淀成可触发、可执行、可评测的 skills。
+riff-plugins（原 riff-skills）是一个面向多种 coding agent 的、厂商中立的 Agent Skills 仓库。目标不是收集尽可能多的知识，而是把个人项目中 agent 容易遗漏、容易拍脑袋、容易过度设计的工程行为，沉淀成可触发、可执行、可评测的 skills。
 
 目标 agent：
 
@@ -78,11 +78,11 @@ Git 仓库是 canonical source。通用安装和更新使用 `skills` CLI，Clau
 marketplace 只是适配层：
 
 ```bash
-npx skills add blxzer77/riff-skills --all
+npx skills add blxzer77/riff-plugins --all
 npx skills list
 npx skills check
 npx skills update
-npx skills add blxzer77/riff-skills --all --global
+npx skills add blxzer77/riff-plugins --all --global
 ```
 
 项目若生成 `skills-lock.json`，应提交它并审查更新；不要把 `.agents/skills/`

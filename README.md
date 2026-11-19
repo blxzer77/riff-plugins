@@ -1,12 +1,26 @@
-# riff-skills
+# riff-plugins
 
-Agent Skills for software engineering work that agents tend to skip or get wrong:
+Extensions for coding agents, written once and adapted to each agent: Agent Skills
+now, and features packaged as plugins later.
+
+The skills cover software engineering work that agents tend to skip or get wrong:
 writing tests, recording decisions, choosing technologies, drawing module and API
 boundaries, reviewing code and designs, and building LLM applications.
 
 Every skill follows the open [Agent Skills specification](https://agentskills.io/specification)
 and uses only its standard frontmatter, so the same directory works in any compliant
 agent.
+
+This repository was previously named `riff-skills`; GitHub redirects the old name.
+
+## Layout
+
+| Path | Contents |
+|---|---|
+| `skills/` | Every installable skill, including the ones that teach an agent to use a feature from `features/` |
+| `features/` | Features that plugins ship, such as command-line tools (none yet); see [features/README.md](features/README.md) |
+| `plugins/` | One directory per plugin, with each agent's manifest side by side (none yet); see [plugins/README.md](plugins/README.md) |
+| `evals/`, `tests/`, `scripts/`, `sources/`, `template/` | Development material; never installed |
 
 ## Skills
 
@@ -59,14 +73,14 @@ CLI is the recommended installer; Claude Code's marketplace is an optional adapt
 Install every skill into the current project and all supported agent locations:
 
 ```bash
-npx skills add blxzer77/riff-skills --all
+npx skills add blxzer77/riff-plugins --all
 ```
 
 Install selected skills or install them for the current user instead:
 
 ```bash
-npx skills add blxzer77/riff-skills --skill writing-tests --agent '*'
-npx skills add blxzer77/riff-skills --all --global
+npx skills add blxzer77/riff-plugins --skill writing-tests --agent '*'
+npx skills add blxzer77/riff-plugins --all --global
 ```
 
 Inspect and update an existing installation:
@@ -115,13 +129,19 @@ marketplace catalog before installing an updated plugin, then update or reinstal
 it from the `/plugin` menu:
 
 ```
-/plugin marketplace add blxzer77/riff-skills
-/plugin install riff-skills@riff-skills
-/plugin marketplace update riff-skills
+/plugin marketplace add blxzer77/riff-plugins
+/plugin install riff@riff-plugins
+/plugin marketplace update riff-plugins
 ```
 
 This is an alternative Claude Code integration, not a prerequisite for using the
-skills with other agents.
+skills with other agents. Install the skills through one channel only: an agent
+that reads both `.agents/skills/` and plugins loads a skill installed both ways
+twice.
+
+Existing installs from `riff-skills@riff-skills` keep working through GitHub's
+redirect but are not renamed; remove that plugin and the `riff-skills`
+marketplace, then add this one.
 
 ## Habits that must always hold
 
@@ -131,7 +151,7 @@ snippet (where provided) into your project's `AGENTS.md`.
 
 ## Contributing
 
-Read [AGENTS.md](AGENTS.md). In short: start from
+Read [AGENTS.md](AGENTS.md). In short, for a skill: start from
 `template/SKILL.template.md`, follow `skills/authoring-skills`, keep evals under
 `evals/<name>/`, and run `python3 scripts/validate.py --strict` before listing a skill. Use
 `skills/evaluating-skills` for behavioral benchmarks when that work is explicitly

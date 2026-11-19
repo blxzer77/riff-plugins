@@ -1,12 +1,12 @@
 {
-  "name": "riff-skills",
-  "description": "Agent Skills for software design, testing, review, and AI application engineering",
+  "name": "riff-plugins",
+  "description": "Agent Skills and plugins for software design, testing, review, and AI application engineering",
   "owner": {
     "name": "blxzer77"
   },
   "plugins": [
     {
-      "name": "riff-skills",
+      "name": "riff",
       "description": "Engineering skills: writing tests, TypeScript and ADRs, debugging failures, verifying changes, building verification harnesses, checking invariants, fanning out work, measuring performance, selecting technologies, designing modules and APIs, reviewing code and designs, building LLM applications, and authoring and evaluating skills",
       "source": "./",
       "skills": [
