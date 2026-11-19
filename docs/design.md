@@ -224,6 +224,20 @@ nyan 的 WebFetch 给了 `prompt` 时调用模型挑逐字摘录（ES 4.4，`ser
     超时一次（3001 ms）后 EMRank 被判 Down 30 s，其后的决策全部 `backend_down`；搜索结果不受影响（走确定性规则），但
     每次搜索最多多等 3 s。
   - 结论：在短进程下，Decision Provider 当前配置是**净损失**（多等、几乎总是回退）。待用户决定（第十节第 8 条）。
+  - EMRank `/v1/models`（2026-11-19）列出 5 个 `kind=decision` 模型：`cloudflare/clef`、`cloudflare/clef-flash`、
+    `openai/gpt-6-luna-decisions`、`typesafe/jev-1.13.0[slow]`、`typesafe/jev[slow]`；DP 设计用的 `typesafe/jev-1.14.0`
+    已不在列表中。逐个冷连接实测（每项 4 次）：
+
+    | 模型 | choice（query_kind）中位 | 20 候选批量中位 | 批量质量（7 个相关 / 13 个无关，阈值 0.5） | 可用性 |
+    |---|---|---|---|---|
+    | `cloudflare/clef` | 1.23 s（0.86–1.38） | 1.31 s（1.23–1.33） | 7/7 命中、0/13 误报（相关最低 0.89，无关最高 0.34） | 正常 |
+    | `cloudflare/clef-flash` | 0.96 s（0.73–1.15） | 1.28 s（1.14–1.54） | 1/7 命中（相关普遍 0.29–0.35） | 正常 |
+    | `openai/gpt-6-luna-decisions` | — | — | — | 503 "没有可调度的上游凭据" |
+    | `typesafe/jev-1.13.0[slow]` | 1.52 s（仅 1 次成功） | 1.84 s（仅 1 次） | — | 402 钱包余额不足 |
+    | `typesafe/jev[slow]` | — | — | — | 402 钱包余额不足 |
+
+    clef-flash 只快约 0.3 s，批量判断却几乎全错（会让 `web.answers` 不标注任何候选）；clef 质量好但冷连接 1.2–1.5 s，
+    且之前观测到一次超过 3 s。
 - **cache**：EMRank 请求是 riff 与 EMRank 之间的事，不经宿主、不影响宿主 cache。
 
 ## 六、cache 与确定性
