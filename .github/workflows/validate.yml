@@ -78,3 +78,22 @@ jobs:
           assert not any((Path(".agents/skills") / name / "evals").exists() for name in expected)
           assert not (Path(".agents/skills") / "template-skill").exists()
           PY
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml pins the version and the components.
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+
+      # The PDF fetch test skips itself without pdftotext.
+      - name: Install pdftotext
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+
+      - name: Formatting
+        run: cargo fmt --all --check
+
+      - name: Tests
+        run: cargo test --workspace --locked

@@ -496,9 +496,16 @@ mod tests {
     }
 
     #[test]
-    fn pdf_conversion_uses_private_temp_path_helper() {
-        let path = PathBuf::from("/tmp/riff-web-fetch-test.pdf");
+    fn the_temporary_pdf_is_made_private() {
+        let path = crate::test_env::scratch_dir("fetch-pdf-private").join("page.pdf");
+        std::fs::write(&path, b"%PDF-").unwrap();
         set_private_permissions(&path);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
     }
 }
 
