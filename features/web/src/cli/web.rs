@@ -27,6 +27,7 @@ pub const HELP: &str = "\
 Usage: riff web search <query...> [options]
        riff web fetch <url> [options]
        riff web reset [--session <id>]
+       riff web doctor
 
 Web search and verbatim page fetch, configured by $RIFF_HOME/config.json
 (default ~/.riff; providers, decision, rerank, key files) and the proxy
@@ -37,6 +38,7 @@ Commands:
   fetch <url>         Print the page's original text, one segment at a time.
                       The output ends with the exact command for the next segment.
   reset               Clear this session's budgets and every provider cooldown
+  doctor              Report configuration, keys, proxy and cooldowns
 
 Options:
       --json             Print JSON instead of Markdown
@@ -292,6 +294,13 @@ fn parse_range(raw: &str) -> Result<RangeSpec, String> {
 
 /// `riff web …`: `args` are the words after `web`.
 pub fn run(args: &[String]) -> i32 {
+    if args.first().map(String::as_str) == Some("doctor") {
+        if args.len() > 1 {
+            eprintln!("riff web: `doctor` takes no arguments");
+            return exit::USAGE;
+        }
+        return super::setup::doctor();
+    }
     let invocation = match parse(args) {
         Ok(Parsed::Help) => {
             print!("{HELP}");

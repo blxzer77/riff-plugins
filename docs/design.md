@@ -213,11 +213,17 @@ nyan 的 WebFetch 给了 `prompt` 时调用模型挑逐字摘录（ES 4.4，`ser
   - 日志写 `$RIFF_HOME/decision/decisions.jsonl`，加 `agent`（适配层传 `--agent <name>`，缺省 `unknown`）与 `session` 两列，
     其余字段同 DP 第七节；
   - 事后信号（DP 第七节）：`web.answers` / `web.page_answers` 的"被保留的候选后来是否被抓取"由 `riff web fetch` 自己记录
-    （同一会话内抓取了被标注的 URL），不依赖宿主；`/decision` 统计命令改为 `riff web decisions [--point P]`（内部诊断，
-    不在 skill 里提）。
-- **外发**：只拦凭据（DP 第六节），沿用 `decision/egress.rs`。nyan 里 egress 与记忆的 secret scanner 是两套
-  （`egress.rs:9-13` 已标注要合并）；记忆不做了，riff 只保留 egress 这一套，scanner 规则表从
-  `team_memory_sync/secret_scanner.rs` 复制进来作为它的一部分。
+    （同一会话内抓取了被标注的 URL），不依赖宿主。nyan 的 `/decision` 统计命令**尚未移植**（计划为
+    `riff web decisions [--point P]`，内部诊断，不在 skill 里提）；在此之前直接读 `decisions.jsonl`。
+- **外发**：只拦凭据（DP 第六节），沿用 `decision/egress.rs`。它有自己的一套规则（不依赖记忆模块的 secret scanner），
+  原样复制即可。
+- **实测（2026-11-19，corp-pc 经代理）**：
+  - 冷连接（每次调用都是新进程）下，一次 `clef` choice 决策用时 1.0–2.7 s（6 次）；最小 noul ping 约 1.3 s。nyan 实测的
+    0.65–0.75 s 是复用连接后的数字（DP 1.3），短进程拿不到。
+  - 本机配置沿用 nyan：`fast` 与 `accurate` 都是 `cloudflare/clef`、关键路径 deadline 3000 ms。实测中 `web.query_kind`
+    超时一次（3001 ms）后 EMRank 被判 Down 30 s，其后的决策全部 `backend_down`；搜索结果不受影响（走确定性规则），但
+    每次搜索最多多等 3 s。
+  - 结论：在短进程下，Decision Provider 当前配置是**净损失**（多等、几乎总是回退）。待用户决定（第十节第 8 条）。
 - **cache**：EMRank 请求是 riff 与 EMRank 之间的事，不经宿主、不影响宿主 cache。
 
 ## 六、cache 与确定性
@@ -330,11 +336,23 @@ docs/design.md           本文
    `searching-the-web` 时会重复加载（`plugin:skill` 命名空间不同）——决定 skill 只放在 `riff-web` 里，还是根级插件拆掉。
 4. **Antigravity**：插件能否放在仓库子目录安装；PreToolUse 返回 deny 后模型是否按理由改用 `riff web`；MCP 工具能否替代
    内置 web 工具。
-7. **拦截**（7.1）：Claude Code 与 Antigravity 的 PreToolUse deny 理由是否原样交给模型、模型是否照做；Codex 关闭内置 web
-   搜索的配置项名称与取值（`config-reference`），以及关闭后是否还有别的内置联网路径。
 5. **跨平台**：Windows 上的文件锁与 0600 / 0700 权限的等价做法（nyan `docs/nyan/windows-audit.md` 可能已有结论）；macOS
    上 `pdftotext` 的来源。
 6. **PH 未核实项**（PH 第八节）与 ES 的 smoke 清单照旧，riff 不新增。
+7. **拦截**（7.1）。已核实（2026-11-19，官方文档）：
+   - Claude Code（code.claude.com/docs/en/hooks）：PreToolUse 输入 `tool_name` + `tool_input`；`WebSearch` 参数
+     `query`/`allowed_domains`/`blocked_domains`/`mode`，`WebFetch` 参数 `url`/`prompt`/`offset`。输出
+     `hookSpecificOutput.permissionDecision = "deny"` 时 `permissionDecisionReason` "shown to Claude"。
+   - Antigravity（antigravity.google/docs/hooks）：输入 `toolCall.name` + `toolCall.args`，`decision` 必填（allow / deny /
+     ask / auto_approve），`reason` "shown to the agent"。`search_web` 参数 `query`、`domain`（可选），`read_url_content`
+     参数 `Url`。
+   - 实现：`riff hook pretooluse --agent <claude-code|antigravity>`（`cli/hook.rs`），本机实测单次 2 ms。
+
+   仍待核实：模型收到 deny 理由后是否照做（需要真实会话）；Codex 关闭内置 web 搜索的配置项名称与取值，以及关闭后是否
+   还有别的内置联网路径。
+8. **Decision Provider 在短进程下的取舍**（第五节"实测"）：可选 (a) `fast` 改回 `typesafe/jev-1.14.0`（DP 设计值）并
+   实测冷连接延迟；(b) 默认关闭 Decision Provider，需要时由用户打开；(c) 做常驻进程（2.2 里的 MCP 模式）复用连接。
+   由用户决定。
 
 ## 十一、验收
 

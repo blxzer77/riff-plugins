@@ -235,6 +235,43 @@ impl Session {
     }
 }
 
+/// A read-only look at a session and the shared health, without the locks.
+/// The hook uses it: it must answer in milliseconds and must not wait for a
+/// search that holds the session lock. A file being replaced reads as the old
+/// or the new content (writes are temp file + rename), never torn.
+pub struct Peek {
+    pub session: SessionState,
+    pub health: HealthState,
+}
+
+pub fn peek(id: &SessionId) -> Peek {
+    fn read<T: DeserializeOwned + Default>(path: PathBuf) -> T {
+        std::fs::read(path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default()
+    }
+    Peek {
+        session: read(sessions_dir().join(format!("{}.json", id.as_str()))),
+        health: read(state_dir().join("health.json")),
+    }
+}
+
+#[cfg(test)]
+pub fn write_session_for_tests(id: &SessionId, state: &SessionState) {
+    let mut locked =
+        Locked::<SessionState>::open(sessions_dir().join(format!("{}.json", id.as_str()))).unwrap();
+    locked.value = state.clone();
+    locked.store().unwrap();
+}
+
+#[cfg(test)]
+pub fn write_health_for_tests(state: &HealthState) {
+    let mut locked = Locked::<HealthState>::open(state_dir().join("health.json")).unwrap();
+    locked.value = state.clone();
+    locked.store().unwrap();
+}
+
 fn install_session(state: &SessionState) {
     crate::web::budget::restore(&state.budget);
     crate::decision::restore_session_budget(&state.decision_budget);
