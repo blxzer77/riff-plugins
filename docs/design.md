@@ -359,9 +359,10 @@ riff 的输出进入宿主上下文后会被逐字重放，所以：
     名仍是 `riff`。
   - 未做：归档里只带本仓库的 `LICENSE`，没有带依赖的许可证汇总（可用 `cargo about` 生成）；没有代码签名与 build
     provenance；Windows 上 `riff` 自身的行为（文件锁、权限）仍未验证（第十节第 5 条）。
-  - **状态（2026-11-19）**：工作流通过了 `actionlint`，版本校验逻辑与 `install.sh` 在本机跑过（后者用假的 `curl` 模拟
-    Release：取最新版、指定版本、校验和不符时拒绝安装）；工作流本身和 `install.ps1` 还没有在 GitHub 上跑过，第一次发布前
-    先手动触发一次 dry run。
+  - riff 的 Release 不标 Latest（`--latest=false`）：仓库的 Latest 留给 skills 的 `vX.Y.Z` release。
+  - **状态（2026-11-19）**：`riff-v0.1.0` 已发布——先在 main 上 dry run 一次（5 个平台构建与冒烟全过），再打 tag，门禁、
+    构建、校验和、发布全部通过。发布后用 `install.sh`（不带版本）从真实 Release 装到临时目录：取到 `riff-v0.1.0`，校验
+    通过，`riff 0.1.0`，静态链接。`install.ps1` 还没有在 Windows 上执行过。
 - **插件**：各家的插件安装方式见 riff-plugins README（skills CLI、Claude Code / Codex marketplace、`agy plugin install`、
   `pi install`）。
 - **版本对齐**：插件只写命令，不锁二进制版本。riff 在 `--json` 输出与 `riff --version` 里给出版本；适配层在 SessionStart
@@ -444,8 +445,17 @@ docs/design.md           本文
      参数 `Url`。
    - 实现：`riff hook pretooluse --agent <claude-code|antigravity>`（`cli/hook.rs`），本机实测单次 2 ms。
 
-   仍待核实：模型收到 deny 理由后是否照做（需要真实会话）；Codex 关闭内置 web 搜索的配置项名称与取值，以及关闭后是否
-   还有别的内置联网路径。
+   仍待核实：模型收到 deny 理由后是否照做（需要真实会话）。
+
+   Codex 的配置项已核实（2026-11-20，本机 `codex-cli 0.170.0` 与 tag `rust-v0.170.0`）：`web_search` 只接受
+   `disabled|cached|indexed|live`，默认 `cached`（`protocol/src/config_types.rs` 的 `WebSearchMode`；非法值被
+   `--strict-config` 拒为 `invalid data`）。`disabled` 时 `create_web_search_tool` 返回 `None`，托管工具不注册；
+   这支工具的动作含 `search`、`open_page`、`find_in_page`（`core/src/web_search.rs`），所以关的是搜索加托管翻页，
+   不是只关搜索。权限配置为 `Disabled` 时会把 `cached` 往 `live` 抬，但显式 `disabled` 保持关闭
+   （`resolve_web_search_mode_for_turn`）。关掉之后仍能联网、且 riff 拦不到的路径：shell（模型跑 `riff` 的通道，
+   也能直接 `curl`）、用户自己配的 MCP、桌面端的 browser / computer use（`features.browser_use` 等默认开，注释写明是
+   桌面应用的 requirements 门，不是 CLI 的 web 工具，也不受 `web_search` 控制）。`view_image` 只读本地路径，
+   `image_generation` 是生图，都不是抓页面。
 8. **Decision Provider 在短进程下的取舍**：已定（2026-11-19）——两个别名都用 `cloudflare/clef`，默认开启，critical
    deadline 不变。理由与数据见第五节"实测"：`jev-1.14.0` 已下架，jev 其余版本需钱包余额，clef-flash 批量判断不准。
    每次搜索多约 1.3 s，接受；偶发超时由确定性回退兜住。

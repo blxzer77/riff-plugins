@@ -19,8 +19,23 @@ web_search = "disabled"
 ```
 
 `web_search` takes `disabled`, `cached`, `indexed` or `live` and defaults to
-`cached`. Leave browser features as they are: they open pages for a person,
-not the model.
+`cached` (Codex 0.170.0; any other value is rejected). `disabled` removes the
+hosted tool altogether, so its page actions (`open_page`, `find_in_page`) go
+with it, not just search. A permission profile of `Disabled` may raise
+`cached` to `live`, but an explicit `disabled` stays off.
+
+These still reach the network, and riff cannot see them:
+
+- Shell commands. That is how the model runs `riff`, and it can also `curl` a
+  URL. The skill tells it not to fetch a refused URL another way.
+- MCP servers configured by the user.
+- Desktop browser and computer use (`features.browser_use`,
+  `features.computer_use`). They default on, but they are gates for the
+  desktop app, not the CLI web tool, and `web_search` does not turn them off.
+  Leave them.
+
+`view_image` reads a local path. `image_generation` draws images; neither
+fetches a page.
 
 ## Install the skill
 

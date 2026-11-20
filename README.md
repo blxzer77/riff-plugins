@@ -84,8 +84,7 @@ cargo build --release --bin riff          # or: build, then put target/release/r
 The installer takes the newest `riff-vX.Y.Z` release, checks the archive
 against the release's `SHA256SUMS`, and puts `riff` in `~/.local/bin`
 (`RIFF_INSTALL_DIR` changes that; `install.sh 0.1.0` picks a version). The
-Linux binaries are static, so they run on glibc and musl systems alike. Until
-the first `riff-v` release is published, build from source.
+Linux binaries are static, so they run on glibc and musl systems alike.
 
 ```bash
 riff init                                  # writes ~/.riff/config.json, never overwrites
