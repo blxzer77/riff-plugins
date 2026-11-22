@@ -17,6 +17,8 @@ depend on one vendor's client. Formerly `riff-skills`.
   generated from its `source.json`, see `plugins/README.md`.
 - `evals/<name>/` — development-only output cases, trigger queries, fixtures, and checks.
 - `template/SKILL.template.md` — starting point for a new skill; it is not installable.
+- `template/global-prompt.md` — the global prompt template, built into `riff prompt install`
+  (`features/web/src/cli/prompt.rs`); keep it vendor-neutral plain Markdown, no frontmatter.
 - `scripts/validate.py` — repository validator; CI runs it on every push.
 - `tests/` — standard-library `unittest` tests for the eval harness scripts; CI runs them.
 - `sources/` — curation maps from upstream material to skills, with the pinned commit.

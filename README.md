@@ -23,7 +23,8 @@ This repository was previously named `riff-skills`; GitHub redirects the old nam
 | `plugins/` | One directory per plugin; [`riff-web`](plugins/riff-web) holds the Claude Code and Codex adapters, while Antigravity and pi read the repository root |
 | `pi/` | The pi extension that exposes `riff web` as two tools |
 | `crates/riff/` | The `riff` binary itself |
-| `evals/`, `tests/`, `scripts/`, `sources/`, `template/` | Development material; never installed |
+| `template/` | The skill template, and the global prompt template built into `riff prompt install` |
+| `evals/`, `tests/`, `scripts/`, `sources/` | Development material; never installed |
 
 ## Skills
 
@@ -191,6 +192,41 @@ twice.
 Existing installs from `riff-skills@riff-skills` keep working through GitHub's
 redirect but are not renamed; remove that plugin and the `riff-skills`
 marketplace, then add this one.
+
+## One global prompt for every agent
+
+`riff prompt install` gives Claude Code, Codex, Antigravity and pi one shared
+user-level instructions file. It writes `~/.riff/global-prompt.md` from
+[`template/global-prompt.md`](template/global-prompt.md) and makes each agent's
+global instructions file a symbolic link to it, so one edit reaches every agent:
+
+| Agent | Linked file |
+|---|---|
+| Claude Code | `$CLAUDE_CONFIG_DIR/CLAUDE.md` (default `~/.claude`) |
+| Codex | `$CODEX_HOME/AGENTS.md` (default `~/.codex`) |
+| Antigravity | `~/.gemini/AGENTS.md` |
+| pi | `$PI_CODING_AGENT_DIR/AGENTS.md` (default `~/.pi/agent`) |
+
+Locations were checked against each agent's documentation (and pi 1.4.0's
+source) on 2026-11-22. Without `--agent`, only agents whose directory exists are
+linked. Nothing that exists is overwritten: a file already at one of these paths
+is kept, and a file that would hide the link from its agent (a non-empty
+`AGENTS.override.md` for Codex or pi) or that the link would replace (pi reads
+only one of `AGENTS.md` and `CLAUDE.md`) blocks that agent. The source holds
+`[fill in]` placeholders for your machine and habits; project facts stay in
+each project's own `AGENTS.md`.
+
+To have an agent do it, ask it to follow these steps:
+
+1. Run `riff prompt install --dry-run` and show the user what it reports.
+2. Run `riff prompt install`.
+3. For every `kept` or `blocked` line, show the user that file, merge what it
+   should keep into the source (`riff prompt path`), and after the user
+   confirms, remove the file and run `riff prompt install` again.
+4. Fill in the source's placeholders: detect what you can observe (operating
+   system, shell, runtimes, package managers) and ask the user the rest.
+   Delete lines that do not apply.
+5. Tell the user each agent reads the file from its next session.
 
 ## Habits that must always hold
 

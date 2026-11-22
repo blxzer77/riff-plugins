@@ -216,6 +216,10 @@ jobs:
           test "$(smoke/riff --version)" = "riff ${VERSION%%-*}"
           smoke/riff init
           test -f "$RIFF_HOME/config.json"
+          # The prompt template is built into the binary; link one agent in a
+          # throwaway home so nothing on the runner is touched.
+          HOME="$RUNNER_TEMP/prompt-home" CODEX_HOME="$RUNNER_TEMP/prompt-home/.codex" smoke/riff prompt install --agent codex
+          grep -q 'riff-global-prompt:v1' "$RUNNER_TEMP/prompt-home/.codex/AGENTS.md"
       - name: Smoke test the archive (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
@@ -233,6 +237,13 @@ jobs:
           & .\smoke\riff.exe init
           if ($LASTEXITCODE -ne 0) { throw "riff.exe init failed: $LASTEXITCODE" }
           if (-not (Test-Path (Join-Path $env:RIFF_HOME 'config.json'))) { throw 'riff init wrote no config.json' }
+          # Only the path and the bundled template: creating links on Windows
+          # needs Developer Mode or admin rights, so linking is not run here.
+          $source = & .\smoke\riff.exe prompt path
+          if ($LASTEXITCODE -ne 0) { throw "riff.exe prompt path failed: $LASTEXITCODE" }
+          if ($source -notlike '*global-prompt.md') { throw "riff.exe prompt path printed '$source'" }
+          & .\smoke\riff.exe prompt install --dry-run --agent codex
+          if ($LASTEXITCODE -ne 0) { throw "riff.exe prompt install --dry-run failed: $LASTEXITCODE" }
       - name: Upload the archive
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

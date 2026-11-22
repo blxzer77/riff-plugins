@@ -98,22 +98,18 @@ pub fn init(args: &[String]) -> i32 {
     0
 }
 
-fn write_private(path: &Path, content: &str) -> std::io::Result<()> {
+/// Creates `path` with `content`; fails with `AlreadyExists` rather than
+/// replace a file, on every platform.
+pub(super) fn write_private(path: &Path, content: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
-        use std::io::Write;
         use std::os::unix::fs::OpenOptionsExt;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(path)?;
-        file.write_all(content.as_bytes())
+        options.mode(0o600);
     }
-    #[cfg(not(unix))]
-    {
-        std::fs::write(path, content)
-    }
+    options.open(path)?.write_all(content.as_bytes())
 }
 
 /// One line of `riff web doctor`.

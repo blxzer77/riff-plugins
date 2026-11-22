@@ -2,6 +2,7 @@
 
 pub mod decisions;
 pub mod hook;
+pub mod prompt;
 pub mod setup;
 pub mod web;
 
@@ -10,6 +11,7 @@ Usage: riff <command> [args...]
 
 Commands:
   web       Web search and verbatim page fetch (riff web --help)
+  prompt    One global instructions file for every agent (riff prompt --help)
   init      Write a starting configuration (never overwrites)
   hook      Host-agent hook adapter (riff hook --help)
   --version Print the version
@@ -21,6 +23,7 @@ Configuration: $RIFF_HOME/config.json (default ~/.riff/config.json).
 pub fn main(args: Vec<String>) -> i32 {
     match args.first().map(String::as_str) {
         Some("web") => web::run(&args[1..]),
+        Some("prompt") => prompt::run(&args[1..]),
         Some("init") => setup::init(&args[1..]),
         Some("hook") => hook::run(&args[1..]),
         Some("--version" | "-V") => {
@@ -54,6 +57,8 @@ mod tests {
     fn dispatches_web_help_version_and_rejects_the_rest() {
         assert_eq!(main(args(&["web", "--help"])), 0);
         assert_eq!(main(args(&["web", "fetch"])), web::exit::USAGE);
+        assert_eq!(main(args(&["prompt", "--help"])), 0);
+        assert_eq!(main(args(&["prompt"])), web::exit::USAGE);
         assert_eq!(main(args(&["--version"])), 0);
         assert_eq!(main(args(&["--help"])), 0);
         assert_eq!(main(args(&["nope"])), web::exit::USAGE);

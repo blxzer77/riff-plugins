@@ -99,3 +99,4 @@ if [[ ":$PATH:" != *":$install_dir:"* ]]; then
   printf 'Add %s to PATH if it is not already present.\n' "$install_dir"
 fi
 printf 'Next: riff init, then riff web doctor.\n'
+printf 'Global instructions for every agent: riff prompt install, then fill in the file it names.\n'

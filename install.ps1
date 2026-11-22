@@ -92,6 +92,7 @@ try {
         Write-Host 'Open a new PowerShell session after changing PATH.'
     }
     Write-Host 'Next: riff init, then riff web doctor.'
+    Write-Host 'Global instructions for every agent: riff prompt install, then fill in the file it names.'
 } finally {
     if (Test-Path $tempDir) {
         Remove-Item -Recurse -Force $tempDir

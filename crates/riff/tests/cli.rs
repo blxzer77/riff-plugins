@@ -375,6 +375,75 @@ fn a_missing_configuration_is_exit_three_and_says_where() {
     );
 }
 
+/// `riff prompt install` through the real binary, with every agent location
+/// under a fake home: one source, one link per agent, nothing overwritten.
+#[cfg(unix)]
+#[test]
+fn prompt_install_links_every_agent_to_one_source_and_keeps_existing_files() {
+    let root = home("prompt");
+    let fake_home = root.join("home");
+    for dir in [".claude", ".codex", ".gemini", "pi-agent"] {
+        std::fs::create_dir_all(fake_home.join(dir)).unwrap();
+    }
+    std::fs::write(
+        fake_home.join(".gemini/AGENTS.md"),
+        "my antigravity rules\n",
+    )
+    .unwrap();
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_riff"))
+            .args(args)
+            .current_dir(&root)
+            .env("HOME", &fake_home)
+            .env("RIFF_HOME", fake_home.join(".riff"))
+            .env("PI_CODING_AGENT_DIR", fake_home.join("pi-agent"))
+            .env_remove("CLAUDE_CONFIG_DIR")
+            .env_remove("CODEX_HOME")
+            .output()
+            .unwrap()
+    };
+
+    let dry = run(&["prompt", "install", "--dry-run"]);
+    assert!(!fake_home.join(".riff").exists(), "{}", stdout(&dry));
+
+    let first = run(&["prompt", "install"]);
+    let text = stdout(&first);
+    // Antigravity's own file stays, so the run reports it needs attention.
+    assert_eq!(first.status.code(), Some(1), "{text}");
+    assert!(text.contains("kept"), "{text}");
+    assert_eq!(
+        std::fs::read_to_string(fake_home.join(".gemini/AGENTS.md")).unwrap(),
+        "my antigravity rules\n"
+    );
+
+    let source = fake_home.join(".riff/global-prompt.md");
+    std::fs::write(&source, "one edit\n").unwrap();
+    for target in [
+        ".claude/CLAUDE.md",
+        ".codex/AGENTS.md",
+        "pi-agent/AGENTS.md",
+    ] {
+        assert_eq!(
+            std::fs::read_to_string(fake_home.join(target)).unwrap(),
+            "one edit\n",
+            "{target}"
+        );
+    }
+
+    // After the user merges and removes their file, a rerun finishes the job.
+    std::fs::remove_file(fake_home.join(".gemini/AGENTS.md")).unwrap();
+    let second = run(&["prompt", "install"]);
+    assert!(second.status.success(), "{}", stdout(&second));
+    assert_eq!(std::fs::read_to_string(&source).unwrap(), "one edit\n");
+    assert_eq!(
+        std::fs::read_to_string(fake_home.join(".gemini/AGENTS.md")).unwrap(),
+        "one edit\n"
+    );
+
+    let path = run(&["prompt", "path"]);
+    assert_eq!(stdout(&path).trim(), source.display().to_string());
+}
+
 #[test]
 fn state_files_are_private() {
     let mock = mock(RESULTS);
