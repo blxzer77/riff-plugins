@@ -1,6 +1,6 @@
 {
   "name": "riff-web",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Routes web search and page reads through the riff command, so results are merged from every configured provider and pages are read verbatim. Ships the hook that answers the host's built-in web tools with the equivalent riff command; the searching-the-web skill is installed from the repository root.",
   "min_riff": "0.1.0",
   "claude_code": {
