@@ -9,3 +9,6 @@
 - Run the project's boundary checks before finishing a change that crosses modules.
 - Prefer a module in the existing deployable over a new package or service unless an
   independent scaling, release, ownership, or isolation need is stated.
+- Prefer extending an owning module's public interface over creating a parallel path;
+  when internal callers migrate to a new path, switch them and delete the old one in
+  the same change.
