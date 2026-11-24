@@ -113,7 +113,7 @@ for skills, because `skill-snapshot/` contains a `SKILL.md`.
 ```
 
 Each run executes in a fresh sandbox directory outside the repository (default
-`~/.cache/riff-skills/runs/`), initialized as a git repository with the fixture
+`~/.cache/riff/checkouts/`), initialized as a git repository with the fixture
 committed. `changes.patch` diffs the work tree against the state the agent started
 from (the fixture plus any `setup.sh` changes), using the harness's own copy of
 the repository rather than the agent's `.git`. The skill is installed where the

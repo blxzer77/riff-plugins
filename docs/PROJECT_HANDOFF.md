@@ -176,7 +176,7 @@ e519d0dd4d16be63b956fd35ab52fd6644840328
 - 已提交 treatment-aware harness：`ef6c8c5`。它区分 routing、treated body effect、baseline 和 infrastructure failure。
 - treatment-aware 结果显示：`designing-apis`、`writing-adrs`、`writing-tests`、`authoring-skills`、`reviewing-code`、`building-llm-applications`、`designing-modules`、`reviewing-designs` 在关键 case 上有增益；`selecting-technologies` 正文增益尚未测出（见下）。
 - 评测模型：`deepseek-flash`。2026-11-02 它一度触发月度上限，当天临时用 `claude-haiku-5-5` 跑了一批；之后 deepseek 已通过 sandbox probe 恢复，后续正式评测继续使用 deepseek。两个模型的结果不可直接比较；`docs/EVALUATION_RESULTS.md` 每节注明模型。正式批次前先跑 sandbox probe。
-- sandbox 包装脚本 `~/.cache/riff-skills/bin/cometix-sandboxed` 在登录用户变更后丢失过一次，已重建：只允许在 `~/.cache/riff-skills/runs/*/work` 和 grader 用的 `/tmp/riff-complete-*/work` 下运行。缺失时先重建再跑评测，不要裸跑 cometix。
+- sandbox 包装脚本 `~/.cache/riff-skills/bin/cometix-sandboxed` 在登录用户变更后丢失过一次，已重建：只允许在 sandbox 目录 `*/work` 和 grader 用的 `/tmp/riff-complete-*/work` 下运行。sandbox 默认根目录 2026-11-24 起是 `~/.cache/riff/checkouts`（之前是 `~/.cache/riff-skills/runs`）；按旧路径重建的包装脚本要改，或给 harness 传 `--sandbox-root ~/.cache/riff-skills/runs`。缺失时先重建再跑评测，不要裸跑 cometix。
 - `designing-modules` 改用非 Anthropic 一手资料（Anthropic 没有模块边界方面的指导；来源见其 `references/sources.md`）。增益只集中在一个行为：边界只体现在代码约定、未写成文档时，通过公开 API 访问而不是越界 import internal（deepseek 上 baseline 6 次中 5 次越界，with-skill 6/6 正确）。haiku 上 trigger 18/20，0 误触发。
 - `reviewing-designs` 按 Anthropic 审查设计重写，换成 4 个 fixture case（prompt 不点题）。haiku 上 0.98 vs 0.83：两边都能找出隐藏缺陷，差别在“健全设计给 approve”（with-skill 5/6，baseline 0/6）。成本约 +585k token/次。trigger 18/20。
 - `selecting-technologies` 在 deepseek 上新增第 7 个 case：选择更便宜的 triage 模型时，baseline 3/3 都没有报告仓库固定主模型的退役状态；当前 skill 3/3 报告，机械检查两边均通过。正文改动已提交。haiku 的 19/20 trigger 和旧 case 结果只作为不可比较的辅助证据。

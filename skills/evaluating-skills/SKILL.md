@@ -92,19 +92,38 @@ path out of version control and away from any directory agents scan for skills.
 
 ## Without the scripts
 
-When no supported agent CLI is available, follow the same layout by hand: for each
-case, run the prompt in a fresh session with the skill and in another without it,
-save the final response and resulting diff under
-`iteration-N/eval-<name>/<config>/run-1/outputs/`, then grade with
-`references/grader.md`. If sub-agents are available, use one per run so contexts
-stay clean; otherwise use separate sessions. Never grade a run in the same context
-that produced it.
+When no supported agent CLI is available, follow the same layout by hand. For each
+case and configuration:
+
+1. Copy the case's files into a new, empty directory outside every repository,
+   under a neutral name. Agents load instruction files from the working directory
+   and its parents, and a workspace path names the case, the configuration and the
+   skill.
+2. Start a fresh session in that directory, with the skill for one configuration
+   and without it for the other. Send the case prompt exactly as written: no role
+   preamble, no note about where to work, nothing about evaluation, and no request
+   to report which skills were used; read that from the transcript.
+3. Save the final response, the transcript, and the diff against the copied files
+   under `iteration-N/eval-<name>/<config>/run-1/outputs/`, then grade with
+   `references/grader.md`.
+
+A sub-agent keeps a run's context clean only if it can start in that directory;
+one that starts in your repository, or has to be told where to work, sees the
+repository's instructions or the path. Otherwise use separate sessions. Never grade
+a run in the same context that produced it.
 
 ## Gotchas
 
-- Global instructions leak into runs. User-level agent instruction files or
-  globally installed skills change results; the adapters disable them, and manual
-  runs must too.
+- Instructions leak into runs: user-level instruction files, globally installed
+  skills, and the instruction files of any repository the run's directory sits in.
+  The scripts start every run outside any repository and the verified adapters
+  disable the other two; manual runs must do the same.
+- Agents behave differently when they can tell they are being evaluated. Models
+  pick out evaluations well above chance, more so in agentic tasks, and often guess
+  what is being tested (Needham et al. 2025, arXiv 2505.23836). Keep evaluation
+  words (eval, benchmark, baseline, grader, fixture, configuration names) and the
+  skill's name out of the path, git history, file names and prompt the agent sees;
+  only the installed skill may carry its name.
 - Agents skip skills for simple one-step requests. A trigger miss on a trivial query
   says nothing about the description.
 - An assertion that passes in both configurations measures the agent, not the skill.

@@ -85,6 +85,7 @@ time, add a check instead of repeating the rule.
 | No `SKILL.md` outside `skills/`; no evals inside a skill | `scripts/validate.py` |
 | Skills install with the generic CLI; templates and evals do not | CI install smoke test |
 | The eval harness does not trust the agent's working directory | `tests/` (CI) |
+| Nothing a harness run shows the agent (path, git history, environment) marks it as an eval | `tests/` (CI); prompts and manual runs: review |
 | Eval checks judge known good and bad outputs correctly | `tests/` for the checks that have them (CI); otherwise review |
 | Plugin manifests match `plugins/<plugin>/source.json` | `scripts/gen-manifests.py --check` (CI) |
 | `riff` builds, is formatted, and its tests pass | `cargo fmt --all --check` and `cargo test --workspace` (CI) |

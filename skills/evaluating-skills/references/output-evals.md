@@ -52,8 +52,9 @@ python3 scripts/run_evals.py --skill <skill-dir> --agent <agent> [--model <m>]
   separately and excluded from the skill-effect denominator.
 - Evaluate with every agent and model the skill must serve; behavior differs.
 
-Without a supported agent CLI, run each case yourself in a fresh session per
-configuration, save the final response and diff into the same layout, and continue.
+Without a supported agent CLI, run each case by hand as the skill's "Without the
+scripts" section describes: a fresh copy of the files outside any repository and the
+prompt exactly as written; then save the outputs into the same layout and continue.
 
 ## Assertions
 

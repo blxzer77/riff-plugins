@@ -114,6 +114,10 @@ def execute(argv, stdin_text, cwd, timeout, env=None, on_line=None) -> Process:
     `on_line(line) -> bool` sees each stdout line as it arrives; returning True
     stops the process early (used to end trigger runs once the outcome is known).
     """
+    # Inherited PWD and OLDPWD name the directory the harness was started from,
+    # usually the repository under evaluation; the agent should see only its own.
+    env = dict(os.environ if env is None else env, PWD=str(Path(cwd).resolve()))
+    env.pop("OLDPWD", None)
     start = time.monotonic()
     try:
         proc = subprocess.Popen(

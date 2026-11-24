@@ -11,7 +11,10 @@ from pathlib import Path
 
 from common import HarnessError, git
 
-DEFAULT_ROOT = Path.home() / ".cache" / "riff-skills" / "runs"
+# The agent sees this path and the initial commit below. Agents behave differently
+# when they can tell they are being evaluated, so neither may name an eval, a
+# fixture, a skill or the harness (tests/test_harness_blinding.py).
+DEFAULT_ROOT = Path.home() / ".cache" / "riff" / "checkouts"
 # Git directory, next to the working directory, recording the state the agent starts from.
 START_GIT = "start.git"
 
@@ -55,7 +58,7 @@ def sandbox(root: Path, fixture: Path | None = None):
                             ignore=shutil.ignore_patterns(SETUP_SCRIPT))
         git(["init", "-q", "-b", "main"], workdir)
         git(["add", "-A"], workdir)
-        git(["commit", "-q", "--no-gpg-sign", "--allow-empty", "-m", "fixture"], workdir)
+        git(["commit", "-q", "--no-gpg-sign", "--allow-empty", "-m", "Initial commit"], workdir)
         setup = fixture / SETUP_SCRIPT if fixture is not None else None
         if setup is not None and setup.is_file():
             env = dict(os.environ, GIT_AUTHOR_NAME="dev", GIT_AUTHOR_EMAIL="dev@localhost",

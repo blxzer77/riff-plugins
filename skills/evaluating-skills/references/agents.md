@@ -29,10 +29,12 @@ to work on, and counting that read reported 3/3 triggers on unrelated queries. O
 evals have a real fixture and an explicit task, so a read of SKILL.md there is the
 agent using the skill.
 
-Every run starts in a fresh git repository under `~/.cache/riff-skills/runs/`
+Every run starts in a fresh git repository under `~/.cache/riff/checkouts/`
 (`--sandbox-root`), with only the skill under test installed and excluded from
-git. The install is removed before outputs are copied. A fresh directory is not a
-confinement; see [Filesystem access](#filesystem-access).
+git. The install is removed before outputs are copied. The path, the initial commit
+and its author say nothing about evaluation, and `PWD` names the run's own
+directory; keep it that way when choosing a `--sandbox-root`. A fresh directory is
+not a confinement; see [Filesystem access](#filesystem-access).
 
 ### pi
 
