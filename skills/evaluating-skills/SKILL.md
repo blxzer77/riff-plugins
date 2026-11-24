@@ -35,8 +35,11 @@ two versions need a holistic comparison.
 - [ ] Pick the agent(s) and model(s) the skill must serve. Read
       `references/agents.md` for the supported adapters. The scripts run agents
       without permission prompts and do not confine them to the sandbox: run them
-      in a container, VM, or confining wrapper, or tell the user first and use only
-      trusted fixtures.
+      in a container, VM, or confining wrapper. An unconfined agent can read
+      anything your user can, including the evals' expected outputs and other
+      runs, so it endangers the machine and can contaminate the result. If you
+      cannot confine runs, tell the user first, use only trusted fixtures, and
+      check transcripts for reads outside the working directory.
 - [ ] Ensure `evals/<skill-name>/evals.json` exists (≥ 3 cases). Draft missing cases
       with the user; their real tasks make better cases than invented ones.
 - [ ] Layer 2: ensure `evals/<skill-name>/trigger-queries.json` exists, measure,

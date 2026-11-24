@@ -19,6 +19,44 @@
 > 2026-11-16 a minimal probe succeeded again; probe before every batch, because the
 > local proxy still drops connections at times.
 
+## Reuse over copying, blinded (2026-11-24, `pi` 1.6.0 + `deepseek-flash`)
+
+The 2026-11-23 necessity check for an `evolving-existing-code` skill (6 runs; 4 of 5
+scenarios passed, so no skill was added and `template/global-prompt.md` got three
+reuse rules in 3f5ed39) was not blinded. Each candidate worked under
+`.workspace/evolving-existing-code/iteration-1/eval-<case>/without_skill/`, was told
+"Act as the implementation sub-agent", and loaded this repository's `AGENTS.md` and
+the user's global prompt. This re-run uses the harness after 8206c5c, with the same
+five fixtures (rebuilt from the thread's file diffs) and task text and 3 runs per
+cell. Its mechanical checks were validated against the untouched fixture, two
+correct solutions written differently, and copy-paste near-misses.
+
+| Case (the reuse it needs) | bare | template before 3f5ed39 | template at 3f5ed39 |
+|---|---|---|---|
+| synonym-helper: call the slug helper in another module | 0/3 | 2/3 | 3/3 |
+| fourth-variant: tidy three exporter copies before adding a fourth | 0/3 | 0/3 | 2/3 |
+| extract-and-share: share the CLI importer's row rules | 0/3 | 0/3 | 2/3 |
+| second-lane-wiring: alert through the existing dispatch | 3/3 | 3/3 | 3/3 |
+| replace-legacy-path: replace the flat rate in place | 3/3 | 3/3 | 3/3 |
+
+"Template" runs appended the template's Communication through Verification
+sections to the system prompt; only the three Working method lines differ. Behavior
+checks passed in all runs; mean tokens 57k / 53k / 55k.
+
+- Blinded, the bare model failed all 9 runs on the three cases that need finding
+  or tidying existing code. The unblinded round passed extract-and-share, so its
+  conclusion that the baseline mostly reuses does not hold.
+- The 3f5ed39 rules help (tidy-first cases 0/6 to 4/6, helper reuse 2/3 to 3/3) but
+  do not settle it, and they reach only agents that load the global prompt.
+- Runs were unconfined (no bwrap on this machine), against the policy above. One
+  run (template before 3f5ed39, synonym-helper) searched `/root` and `/tmp`, read
+  the case's expected output, and queried the orchestrating app's database; it was
+  discarded and the case re-run under an `unshare` mount and PID namespace. A
+  transcript scan found no other run reading outside its directory.
+- Not tested: other agents and models, and any with-skill configuration. The
+  workspace (fixtures, checks, check validation, wrappers) is
+  `.workspace/evolving-existing-code/`, not committed.
+
 ## New skill `creating-verification-harnesses` (2026-11-17, Claude Haiku 5.5 subagents)
 
 From pstack's create- and maintain-verification-skill: build a project-local verify

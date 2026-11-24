@@ -104,8 +104,20 @@ misleads it acts with your permissions.
 - Run evals inside a container or VM, or pass a wrapper that confines the agent to
   its working directory as `--agent-bin` (for example bubblewrap, or a separate OS
   user). Give the agent only the environment variables it needs.
-- Without such confinement, tell the user before running, and run only fixtures
-  and queries you trust.
+- Without such confinement, tell the user before running, run only fixtures and
+  queries you trust, and scan every transcript for reads outside the run's
+  directory before grading.
+
+Confinement also keeps the result honest. In a 2026-11-24 batch of 45 unconfined
+`pi` runs, one searched `/root` and `/tmp` for a function name from its task, read
+the case's expected output from a scratch copy, listed the other runs'
+directories, and queried the orchestrating app's local database; its result had to
+be discarded. Hide everything but the working directory: the repository and its
+evals, scratch files, other runs, and the agent's own session history. Where
+bubblewrap is not installed, root can use util-linux `unshare --mount --pid --fork
+--mount-proc`: inside, mount empty tmpfs over the home directory and `/tmp`, then
+bind back only the agent's install, a copy of its model settings and any key file
+they read, and the working directory.
 
 The harness does not trust the working directory after a run. It keeps install
 records in memory and removes only paths that still resolve inside the working
