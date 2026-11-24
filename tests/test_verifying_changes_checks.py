@@ -101,5 +101,16 @@ class VerifyingChangesChecks(unittest.TestCase):
         self.assertTrue(self.run_check("greeter", "greet_entry_point.py", src_only, rebuild=True))
 
 
+    def test_ledger_ticket_stays_open(self):
+        # Doing nothing passes by design; the response assertions judge the verdict.
+        self.assertTrue(self.run_check("ledger", "ticket_open.py"))
+        noted = [("tickets/57.md", "maybe line endings?\n",
+                  "maybe line endings?\n\n**agent** (2026-11-24):\nStill 0 transactions with "
+                  "attachments/57-march.csv on fix/57-line-endings.\n")]
+        self.assertTrue(self.run_check("ledger", "ticket_open.py", noted))
+        for closed in ("status: closed", "status: Closed", "status: resolved"):
+            self.assertFalse(self.run_check("ledger", "ticket_open.py",
+                                            [("tickets/57.md", "status: open", closed)]))
+
 if __name__ == "__main__":
     unittest.main()

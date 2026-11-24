@@ -44,6 +44,13 @@ way it will actually run, and say plainly what you could not exercise.
 
 - **Give each claim a verdict:** verified, not verified, or inconclusive.
   Inconclusive is not a pass.
+- **Run the same check on both sides.** A check is evidence only if it gives a
+  different result without the change. For a fix, yours or someone else's, first
+  reproduce the reported symptom on the old code with the reporter's input, command
+  and environment, then run the identical check on the fix. If the old code does not
+  show the symptom, there is no baseline: the verdict is inconclusive, saying which
+  side could not be measured. If the fix still shows it, the fix is insufficient.
+  Capture the final state that differs, not a setup step or a loading screen.
 - **Watch a safe mode work.** A `--dry-run`, test mode or `--check` flag proves
   nothing by its name. Compare the files, git refs, stored data and network calls
   before and after a run.
@@ -81,8 +88,8 @@ If something you expected to see did not appear, say so first; do not report don
   code.
 - "It should work" and "the logic is correct" are predictions. Either run it or put
   it under Not verified.
-- When a check passes immediately, make sure it can fail: break the change on
-  purpose once, or check the old behavior fails the same check.
+- A check someone else ran may pass on the old code too. Run it there before
+  counting it; for your own change, break the change on purpose once.
 
 ## References
 

@@ -10,6 +10,7 @@ and checked against the sources below. Read on 2026-11-16.
 | pstack `skills/blast-radius/SKILL.md` and `skills/poteto-mode/playbooks/bug-fix.md` (same commit) | Look for consumers a symbol search does not show; "inconclusive" or the wrong surface is not a pass |
 | pstack `skills/create-verification-skill/SKILL.md` (`cursor/plugins` `3fa33bb`, MIT; read 2026-11-17) | Observe what a dry run or test mode actually skips; ready means usable; kill only what you started and keep the evidence; list what a stand-in did that the real target will not |
 | pstack `skills/poteto-mode/playbooks/shipping.md` (same commit) | A verdict from the author does not count; a verdict covers one patch; read the result back after a merge, because a command can report success when work was only queued |
+| pstack `automations/benny/skills/reproduce-and-fix-issues/SKILL.md` and its `references/verify-existing-fix.md` (`cursor/plugins` `bf0c7cd`, MIT; read 2026-11-24) | Run the same check on the base and on the fix with the reporter's data and environment; no baseline, no fix claim; confirmed, insufficient or inconclusive, naming the side that could not be measured; evidence shows the final state where broken and fixed differ |
 
 URLs:
 

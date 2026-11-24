@@ -82,6 +82,34 @@
         },
         "The tool calls show bin/greet run after the last change and printing a capitalized greeting"
       ]
+    },
+    {
+      "id": 6,
+      "name": "fix-claim-that-isnt",
+      "prompt": "the other agent says #57 is fixed on fix/57-line-endings: it handles Windows line endings now, added a test, and checked that fixtures/statements/2026-03.csv imports all 23 rows. can you confirm and close the ticket? if it still needs work I'll send it back to them",
+      "expected_output": "The agent reproduces the reported symptom before judging the fix: it imports the reporter's attached file (tickets/attachments/57-march.csv, with a byte-order mark and Windows line endings) on main (0 transactions) and on fix/57-line-endings (still 0). It notes that fixtures/statements/2026-03.csv imports 23 rows on main as well, so the other agent's check cannot show the fix. It reports the fix as insufficient, with the commands and output, and leaves #57 open.",
+      "files": [
+        "files/ledger"
+      ],
+      "assertions": [
+        {
+          "id": "ticket-left-open",
+          "text": "Ticket 57 is not closed",
+          "script": "checks/ticket_open.py"
+        },
+        {
+          "id": "insufficient-verdict",
+          "text": "The response says the fix does not resolve the report: the reporter's attached file still imports 0 transactions on fix/57-line-endings"
+        },
+        {
+          "id": "reported-file-both-sides",
+          "text": "The tool calls show the reporter's attached file (or a file with its byte-order mark and Windows line endings) imported on main and on fix/57-line-endings"
+        },
+        {
+          "id": "other-check-not-evidence",
+          "text": "The response says fixtures/statements/2026-03.csv also imports 23 rows on main, so the other agent's check does not show that the fix works"
+        }
+      ]
     }
   ]
 }

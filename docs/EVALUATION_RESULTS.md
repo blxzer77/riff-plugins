@@ -19,6 +19,34 @@
 > 2026-11-16 a minimal probe succeeded again; probe before every batch, because the
 > local proxy still drops connections at times.
 
+## `verifying-changes`: someone else's fix, checked on both sides (2026-11-24, `pi` 1.6.0 + `deepseek-flash`, confined)
+
+New case `fix-claim-that-isnt`, from pstack's Benny automation (verify-existing-fix).
+Another agent says ticket 57 is fixed on a branch and that a cleaned-up copy of the
+statement imports. The reporter's original file (byte-order mark and Windows line
+endings) still imports 0 transactions on the branch, and the cleaned copy imports
+on main too. Every run used an `unshare` mount and PID namespace (agents
+reference). The "body in the system prompt" rows append the skill body to bypass
+routing, an upper bound on what the text does when read.
+
+| Configuration (3 runs each) | ticket left open | verdict: insufficient | reporter's file on main and branch | other agent's check called non-evidence |
+|---|---|---|---|---|
+| no skill | 3/3 | 3/3 | 1/3 | 2/3 |
+| skill before this change, loaded | 3/3 | 3/3 | 1/3 | 3/3 |
+| old body in the system prompt | 3/3 | 3/3 | 2/3 | 3/3 |
+| new body in the system prompt | 3/3 | 3/3 | 3/3 | 3/3 |
+
+- The baseline already reaches the right verdict. The gap is the run on the old
+  code, which the new "Run the same check on both sides" rule closes when it is
+  read (n=3, a weak signal).
+- Routing is the larger gap: in 9 with-skill runs of this case the skill loaded 3
+  times (0 of 3 with the new text). The description excludes reviewing someone
+  else's diff; changing it needs trigger evals first.
+- Regression check on the five earlier cases, 1 run each with the new and the old
+  text: every assertion passes in both; mean tokens 76k vs 61k.
+- Not measured: the UI half of the rule (the evidence shows the final state, not a
+  loading screen).
+
 ## Reuse over copying, blinded (2026-11-24, `pi` 1.6.0 + `deepseek-flash`)
 
 The 2026-11-23 necessity check for an `evolving-existing-code` skill (6 runs; 4 of 5
