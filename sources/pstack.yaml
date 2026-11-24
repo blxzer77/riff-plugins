@@ -63,7 +63,7 @@ adopted:
       practice: an author's verdict does not count; a verdict covers one patch; read back after a merge (commit 3fa33bb)
     - path: automations/benny/skills/reproduce-and-fix-issues/references/verify-existing-fix.md
       practice: run the same check on the old code and on the fix, with the reporter's input, command and environment; no baseline is inconclusive, a fix that still shows the symptom is insufficient; capture the final state where they differ
-      note: eval fix-claim-that-isnt (2026-11-24); the baseline already reaches the verdict, the rule raises runs on the old code from 1/3 to 3/3 when read, and the skill loads for this task in 3 of 9 runs
+      note: eval fix-claim-that-isnt (2026-11-24); the baseline already reaches the verdict, the rule raises runs on the old code from 1/3 to 3/3 when read; the skill loaded for this task in 3 of 15 runs, 4 of 9 once the description named it
   evaluating-skills:
     - path: skills/poteto-mode/playbooks/eval.md
       practice: nothing the candidate sees (path, git history, environment, prompt) names the evaluation; organic prompts; never ask the candidate which skills it used

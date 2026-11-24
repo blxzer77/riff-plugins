@@ -19,6 +19,35 @@
 > 2026-11-16 a minimal probe succeeded again; probe before every batch, because the
 > local proxy still drops connections at times.
 
+## `verifying-changes` description for someone else's fix (2026-11-24, `pi` 1.6.0 + `deepseek-flash`, confined)
+
+Under the old description the `fix-claim-that-isnt` prompt loaded the skill in 3 of
+15 runs (0/6 trigger runs, 3/9 output runs). The adopted description adds "when
+someone says a fix is done" and narrows "reviewing someone else's diff" to "reading
+a diff for bugs" (298 characters). Ten trigger queries were added (30 in all,
+15/15): four where someone else claims a fix or feature works, four near-misses
+(review, debug, regression test, review comments), and two on the ledger fixture.
+
+| Description | Train pos | Train neg | Validation pos | Validation neg | Total | `fix-claim-that-isnt` prompt loads |
+|---|---:|---:|---:|---:|---:|---:|
+| old | 7/9 | 6/9 | 2/6 | 3/6 | 18/30 | 3/15 |
+| adopted | 8/9 | 7/9 | 4/6 | 2/6 | 21/30 | 4/9 |
+| alternative ("when told someone else's fix or feature is done") | 7/9 | 6/8 | 3/6 | 3/6 | 19/29 | 4/6 (trigger runs only) |
+
+- Installed alone, 3 runs per query, threshold 0.5. One negative timed out in
+  every run of the alternative.
+- Installed with reviewing-code, debugging-failures, writing-tests and
+  creating-verification-harnesses (validation set, 1 run per query): neither
+  description took another skill's queries. The old one was also loaded on three
+  harness-building queries (adopted: one) and on one harness negative. The false
+  triggers seen with the skill alone (CI setup, a flaky test, a regression test,
+  review comments) went to their own skills or to none.
+- Six queries written after the choice: 5/6 for both descriptions; both load on
+  "profile it" when installed alone.
+- The one treated `fix-claim-that-isnt` run with the adopted description passed
+  all four assertions, including the reporter's file on both sides; the other two
+  runs did not load the skill.
+
 ## `verifying-changes`: someone else's fix, checked on both sides (2026-11-24, `pi` 1.6.0 + `deepseek-flash`, confined)
 
 New case `fix-claim-that-isnt`, from pstack's Benny automation (verify-existing-fix).
@@ -40,8 +69,8 @@ routing, an upper bound on what the text does when read.
   code, which the new "Run the same check on both sides" rule closes when it is
   read (n=3, a weak signal).
 - Routing is the larger gap: in 9 with-skill runs of this case the skill loaded 3
-  times (0 of 3 with the new text). The description excludes reviewing someone
-  else's diff; changing it needs trigger evals first.
+  times (0 of 3 with the new text). The description excluded reviewing someone
+  else's diff; see the description section above for the change.
 - Regression check on the five earlier cases, 1 run each with the new and the old
   text: every assertion passes in both; mean tokens 76k vs 61k.
 - Not measured: the UI half of the rule (the evidence shows the final state, not a

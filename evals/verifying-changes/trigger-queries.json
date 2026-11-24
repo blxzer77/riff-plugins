@@ -118,5 +118,65 @@
     "should_trigger": false,
     "set": "validation",
     "fixture": "files/trigger-repo"
+  },
+  {
+    "query": "the other agent says the CSV order export on feature/order-export works now and its tests pass. confirm it actually does before I tell the team",
+    "should_trigger": true,
+    "fixture": "files/trigger-repo",
+    "set": "train"
+  },
+  {
+    "query": "QA reopened the webhook signature ticket but the dev says it was fixed last week. can you check who's right?",
+    "should_trigger": true,
+    "fixture": "files/trigger-repo",
+    "set": "validation"
+  },
+  {
+    "query": "a teammate says parseDuration in packages/utils handles values like 1h30m now. is that true? don't just take their word for it",
+    "should_trigger": true,
+    "fixture": "files/trigger-repo",
+    "set": "validation"
+  },
+  {
+    "query": "contractor marked the billing sync retry bug as done, before I close the issue make sure it's really fixed",
+    "should_trigger": true,
+    "fixture": "files/trigger-repo",
+    "set": "train"
+  },
+  {
+    "query": "go through the changes on feature/order-export and flag anything that looks wrong before I merge",
+    "should_trigger": false,
+    "fixture": "files/trigger-repo",
+    "set": "train"
+  },
+  {
+    "query": "the export endpoint on feature/order-export throws in staging, find out why",
+    "should_trigger": false,
+    "fixture": "files/trigger-repo",
+    "set": "train"
+  },
+  {
+    "query": "the parseDuration bug got fixed last week, add a regression test for it in packages/utils",
+    "should_trigger": false,
+    "fixture": "files/trigger-repo",
+    "set": "validation"
+  },
+  {
+    "query": "a reviewer left comments on the order export PR, go address them",
+    "should_trigger": false,
+    "fixture": "files/trigger-repo",
+    "set": "validation"
+  },
+  {
+    "query": "another agent fixed ticket 57 on its branch and says the sample statement imports fine now. check that's true before I close the ticket",
+    "should_trigger": true,
+    "set": "train",
+    "fixture": "files/ledger"
+  },
+  {
+    "query": "look over the diff on fix/57-line-endings and tell me if anything in it is wrong before I merge",
+    "should_trigger": false,
+    "set": "train",
+    "fixture": "files/ledger"
   }
 ]

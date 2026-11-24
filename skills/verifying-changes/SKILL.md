@@ -1,6 +1,6 @@
 ---
 name: verifying-changes
-description: "Proves a change works by running it the way it really runs. Use when implementing a feature, fix, default or config change and before saying it works, or when tests pass but the real behavior is unconfirmed. Not for writing test suites, reviewing someone else's diff, or debugging."
+description: "Proves a change works by running it the way it really runs. Use when implementing a feature, fix, default or config change and before saying it works, when someone says a fix is done, or when tests pass but real behavior is unconfirmed. Not for writing tests, reading a diff for bugs, or debugging."
 license: Apache-2.0
 metadata:
   verified-on: "2026-11-17"
