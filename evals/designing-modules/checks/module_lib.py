@@ -53,7 +53,7 @@ def imports() -> list[tuple[str, str, int, Path]]:
 
 
 def top_modules() -> set[str]:
-    return {f"shop.{p.name}" for p in PACKAGE.iterdir()
+    return {f"shop.{p.stem}" for p in PACKAGE.iterdir()
             if (p.is_dir() and (p / "__init__.py").exists()) or (p.suffix == ".py" and p.stem != "__init__")}
 
 
