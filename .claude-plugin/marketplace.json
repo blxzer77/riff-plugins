@@ -7,13 +7,14 @@
   "plugins": [
     {
       "name": "riff",
-      "description": "Engineering skills: writing tests, TypeScript and ADRs, debugging failures, verifying changes, building verification harnesses, checking invariants, fanning out work, measuring performance, selecting technologies, designing modules and APIs, reviewing code and designs, building LLM applications, and authoring and evaluating skills",
+      "description": "Engineering skills: writing tests, TypeScript and ADRs, debugging failures, verifying changes, building verification harnesses, checking invariants, fanning out work, measuring performance, selecting technologies, designing modules and APIs, reusing existing code, reviewing code and designs, building LLM applications, and authoring and evaluating skills",
       "source": "./",
       "skills": [
         "./skills/authoring-skills",
         "./skills/evaluating-skills",
         "./skills/selecting-technologies",
         "./skills/designing-modules",
+        "./skills/reusing-existing-code",
         "./skills/designing-apis",
         "./skills/writing-tests",
         "./skills/debugging-failures",

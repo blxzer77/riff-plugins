@@ -1,0 +1,122 @@
+[
+  {
+    "query": "add a payouts csv export next to the others in app/exporters.py: payout_id, account_id, amount, paid_at, plus the usual row_count and total_amount",
+    "should_trigger": true,
+    "fixture": "files/fourth-variant",
+    "set": "train"
+  },
+  {
+    "query": "finance needs a credit notes export like the refunds one. columns credit_note_id, customer_id, amount, issued_at",
+    "should_trigger": true,
+    "fixture": "files/fourth-variant",
+    "set": "train"
+  },
+  {
+    "query": "app/reports.py should accept order rows uploaded as csv too. bad rows get rejected the same way the importer rejects them",
+    "should_trigger": true,
+    "fixture": "files/extract-and-share",
+    "set": "validation"
+  },
+  {
+    "query": "add a bulk adjustment function to app/inventory.py that takes csv rows of sku and qty. validate the skus like orders do",
+    "should_trigger": true,
+    "fixture": "files/extract-and-share",
+    "set": "validation"
+  },
+  {
+    "query": "projects need url slugs. add create_project(name) in app/api/projects.py that derives one from the name",
+    "should_trigger": true,
+    "fixture": "files/synonym-helper",
+    "set": "train"
+  },
+  {
+    "query": "teams can have a short handle for @mentions now. add set_team_handle(slug, handle), same character rules as slugs",
+    "should_trigger": true,
+    "fixture": "files/synonym-helper",
+    "set": "train"
+  },
+  {
+    "query": "when a renewal succeeds, email the user a receipt with the amount and the next billing date",
+    "should_trigger": true,
+    "fixture": "files/second-lane-wiring",
+    "set": "train"
+  },
+  {
+    "query": "when a payment dispute webhook comes in, notify the account owner by email (people who opted out shouldn't get it)",
+    "should_trigger": true,
+    "fixture": "files/second-lane-wiring",
+    "set": "validation"
+  },
+  {
+    "query": "add a 15% student discount to checkout and invoice totals for orders flagged is_student",
+    "should_trigger": true,
+    "fixture": "files/replace-legacy-path",
+    "set": "validation"
+  },
+  {
+    "query": "black friday: 20% off every order placed on 2026-11-27, has to show up in checkout and on invoices",
+    "should_trigger": true,
+    "fixture": "files/replace-legacy-path",
+    "set": "train"
+  },
+  {
+    "query": "export_refunds_csv shows the wrong total for partial refunds. find out why and fix it",
+    "should_trigger": false,
+    "fixture": "files/fourth-variant",
+    "set": "train"
+  },
+  {
+    "query": "write tests for export_customers_csv, nothing covers an empty list right now",
+    "should_trigger": false,
+    "fixture": "files/fourth-variant",
+    "set": "train"
+  },
+  {
+    "query": "explain how cli_import decides a row is invalid. just explain, don't change anything",
+    "should_trigger": false,
+    "fixture": "files/extract-and-share",
+    "set": "validation"
+  },
+  {
+    "query": "the importer takes 40s on a 200k-row file. make it faster and show me before/after numbers",
+    "should_trigger": false,
+    "fixture": "files/extract-and-share",
+    "set": "validation"
+  },
+  {
+    "query": "move canonicalize_account_slug out of app/core into an accounts package and update the callers",
+    "should_trigger": false,
+    "fixture": "files/synonym-helper",
+    "set": "validation"
+  },
+  {
+    "query": "rename create_team to register_team everywhere, including the tests",
+    "should_trigger": false,
+    "fixture": "files/synonym-helper",
+    "set": "validation"
+  },
+  {
+    "query": "review app/notifications/dispatch.py for bugs before we ship it",
+    "should_trigger": false,
+    "fixture": "files/second-lane-wiring",
+    "set": "train"
+  },
+  {
+    "query": "test_notifications_and_billing fails on CI now and then but always passes locally. figure out what's flaky",
+    "should_trigger": false,
+    "fixture": "files/second-lane-wiring",
+    "set": "train"
+  },
+  {
+    "query": "design the http api for a discounts service: endpoints, error format, pagination",
+    "should_trigger": false,
+    "fixture": "files/replace-legacy-path",
+    "set": "train"
+  },
+  {
+    "query": "add type hints to app/checkout.py and app/invoices.py, no behavior changes",
+    "should_trigger": false,
+    "fixture": "files/replace-legacy-path",
+    "set": "train"
+  }
+]

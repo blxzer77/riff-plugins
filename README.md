@@ -34,6 +34,7 @@ This repository was previously named `riff-skills`; GitHub redirects the old nam
 | [evaluating-skills](skills/evaluating-skills) | Review, benchmark, and tune the triggering of a skill |
 | [selecting-technologies](skills/selecting-technologies) | Choose stable, proportionate technologies with current evidence |
 | [designing-modules](skills/designing-modules) | Set module boundaries proportional to project size |
+| [reusing-existing-code](skills/reusing-existing-code) | Add to existing code without copying its rules: reuse them, or tidy first and then add |
 | [designing-apis](skills/designing-apis) | Design maintainable, evolvable API contracts |
 | [writing-tests](skills/writing-tests) | Write tests that catch regressions and repair flaky suites |
 | [debugging-failures](skills/debugging-failures) | Find and fix the root cause of a crash, wrong output, or bug report |
@@ -57,6 +58,7 @@ This repository was previously named `riff-skills`; GitHub redirects the old nam
 | "Is this PR safe to merge?" | reviewing-code | reviewing-designs, which reviews proposals, ADRs, RFCs, and plans |
 | "Postgres or SQLite?" | selecting-technologies | writing-adrs, which records the decision once made; often both apply |
 | "Split billing out of orders" | designing-modules | designing-apis, which covers the contract with clients |
+| "Check phone numbers on the profile form too; signup already does" | reusing-existing-code | designing-modules, which moves code between modules; both apply when the shared rule belongs in another module |
 | "Add tests for this module" | writing-tests | reviewing-code, which reviews a change and does not add tests |
 | "Checkout returns 500, fix it" | debugging-failures | writing-tests alone; it adds the regression test once the cause is known, and both often apply |
 | "This test fails randomly on CI" | writing-tests | debugging-failures, which is for failures with an unknown cause in the product code |

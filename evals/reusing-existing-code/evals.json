@@ -1,0 +1,41 @@
+{
+  "skill_name": "reusing-existing-code",
+  "evals": [
+    {
+      "id": 1,
+      "name": "synonym-helper",
+      "prompt": "Add register_member(display_handle: str, email: str) to app/api/members.py. It should normalize display_handle into a lowercase ASCII username (letters, digits, and single hyphens, no leading or trailing hyphens, 3 to 32 chars, raising ValueError if invalid), store the member in MEMBERS keyed by username, and return the member dict. Add tests in tests/test_members.py and keep all tests passing.",
+      "expected_output": "Reuses canonicalize_account_slug from app/core/identity.py (with max_length=32) instead of reimplementing slug normalization in app/api/members.py. Accents, trimming and length bounds behave as they do for teams; the member is stored in MEMBERS; all tests pass.",
+      "files": ["files/synonym-helper"],
+      "assertions": [
+        {"id": "member-normalization", "text": "register_member normalizes handles like team slugs and stores members by username", "script": "checks/synonym_behavior.py"},
+        {"id": "reuses-slug-helper", "text": "register_member reuses app/core/identity.py instead of re-implementing normalization", "script": "checks/synonym_reuse.py"}
+      ]
+    },
+    {
+      "id": 2,
+      "name": "fourth-variant",
+      "prompt": "Add export_invoices_csv(invoices) to app/exporters.py returning the same export payload shape as the other exporters (filename 'invoices.csv', columns: invoice_id, customer_id, amount, issued_at, and summary fields row_count and total_amount). Add tests in tests/test_exporters.py and keep all tests passing.",
+      "expected_output": "Extracts the CSV boilerplate the three exporters repeat into one shared helper (in app/exporters.py or a module named for it, not a new utils or common module), rewrites the existing exporters on it without changing their output, and builds export_invoices_csv on it, instead of copy-pasting a fourth exporter. All tests pass.",
+      "files": ["files/fourth-variant"],
+      "assertions": [
+        {"id": "exporters-correct", "text": "The three existing exporters are unchanged and export_invoices_csv returns the invoice payload", "script": "checks/exporters_behavior.py"},
+        {"id": "one-csv-writer", "text": "All exporters share one CSV writer instead of a fourth copy", "script": "checks/exporters_once.py"},
+        {"id": "no-new-shared-module", "text": "No new shared grab-bag module (utils, common, core, ...) was added", "script": "checks/no_new_shared_module.py"}
+      ]
+    },
+    {
+      "id": 3,
+      "name": "extract-and-share",
+      "prompt": "Add `import_orders_payload(csv_text: str) -> dict` to `app/api_orders.py`. It should parse CSV text containing columns `order_id`, `sku`, `qty`, `unit_price`, `ordered_on` (raising `ValueError` if required columns are missing), validate each row (non-empty unique `order_id` not already in `ORDERS_DB`, SKU matching `^[A-Z]{2,4}-\\d{4}$` after uppercasing, positive integer `qty`, positive `unit_price` converted to `total_cents`, valid ISO `ordered_on` date), store valid orders in `ORDERS_DB`, and return `{\"imported\": <int>, \"errors\": <list[str]>}`. Add tests in `tests/test_api_orders.py` and keep all tests passing.",
+      "expected_output": "Moves the row rules the CLI importer already implements into one shared function or an order-import module (not a utils or common grab-bag) that both run_cli and import_orders_payload call, instead of re-implementing the column, SKU, quantity, price, date and duplicate-ID checks in app/api_orders.py. CLI behavior is unchanged; all tests pass.",
+      "files": ["files/extract-and-share"],
+      "assertions": [
+        {"id": "api-import-correct", "text": "import_orders_payload applies the importer's rules and the CLI importer is unchanged", "script": "checks/import_behavior.py"},
+        {"id": "row-rules-once", "text": "The SKU and date rules are written once and shared by both importers", "script": "checks/import_rules_once.py"},
+        {"id": "duplicate-check-once", "text": "The duplicate-ID check is written once and shared by both importers", "script": "checks/import_duplicate_check_once.py"},
+        {"id": "no-new-shared-module", "text": "No new shared grab-bag module (utils, common, core, ...) was added", "script": "checks/no_new_shared_module.py"}
+      ]
+    }
+  ]
+}

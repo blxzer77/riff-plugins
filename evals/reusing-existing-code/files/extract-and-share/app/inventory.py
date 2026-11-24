@@ -1,0 +1,1 @@
+STOCK: dict[str, int] = {}

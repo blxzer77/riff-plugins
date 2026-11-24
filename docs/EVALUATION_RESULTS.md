@@ -19,6 +19,62 @@
 > 2026-11-16 a minimal probe succeeded again; probe before every batch, because the
 > local proxy still drops connections at times.
 
+## New skill `reusing-existing-code` (2026-11-24, `pi` 1.6.0 + `deepseek-flash`, confined)
+
+The blinded re-run below left a failure with no skill to fix it: asked to add a case
+next to existing ones, the agent copies the repeated block or the other path's
+rules. Three of its five cases discriminate; they are this skill's evals, with the
+same fixtures and checks plus one that no new `utils` or `common` module appears
+(`tests/test_reusing_existing_code_checks.py`). Every run used the `unshare` wrapper,
+3 runs per cell; a cell counts runs that passed every assertion of the case.
+
+| Configuration | synonym-helper | fourth-variant | extract-and-share | Mean tokens |
+|---|---|---|---|---:|
+| no skill | 3/3 | 0/3 | 0/3 | 42k |
+| designing-modules installed (loaded in 2 of 9) | 1/1 treated | none treated | 0/1 treated | 50k |
+| designing-modules snippet in the system prompt | 3/3 | 0/3 | 0/3 | 46k |
+| the rules as a designing-modules section, in the system prompt | 3/3 | 2/3 | 3/3 | 62k |
+| the rules as two snippet lines, in the system prompt | 3/3 | 1/3 | 3/3 | 38k |
+| reusing-existing-code installed (loaded in 9 of 9) | 3/3 | 3/3 | 3/3 | 58k |
+
+- The rules work when read; where they live decides whether they are read. The
+  five reuse prompts loaded designing-modules in 2 of 15 trigger runs and the same
+  rules under their own name and description in 15 of 15, so they became a skill
+  rather than a designing-modules section.
+- Runs that read the rules tidied inside the file (`_export_csv` in
+  `app/exporters.py`) or moved the importer's rules into `app/cli_import.py` or a
+  new `app/order_import.py`; none added a grab-bag module or changed the existing
+  exporters' or importer's output.
+- synonym-helper is noisy: the earlier unconfined baseline failed it 0/3, this one
+  passed 3/3. Its fixture has five files, so every run reads the helper; the case
+  shows whether the agent reuses what it has read, not whether it searches. The
+  "search by what it does" rule is not measured.
+
+Triggering, installed alone, 3 runs per query, threshold 0.5:
+
+| Description | Train pos | Train neg | Validation pos | Validation neg |
+|---|---:|---:|---:|---:|
+| adopted | 6/6 | 2/6 | 4/4 | 2/4 |
+| a longer "Not for" list (bugs, flaky tests, API design, edits that add no behavior) | 6/6 | 1/6 | — | — |
+| structurally different, leading with the action | 6/6 | 0/6 | — | — |
+
+- Installed alone, the skill loads for most code tasks in its fixtures (a bug fix, a
+  speedup, moving a module, API design, type hints), and neither narrower
+  description lowered that; they were not run on validation.
+- Installed with writing-tests, verifying-changes, designing-modules,
+  debugging-failures and reviewing-code (validation set, 1 run per query): its own
+  positives 4/4 (always with writing-tests), its own negatives 0/4. It loaded on
+  three other skills' queries, each time with the owner also loaded: a gradual
+  storage replacement, a new webhook event type, and a REST API design request (the
+  one clear false trigger). The other skills' owner-load counts match the earlier
+  five-skill run (debugging-failures 2/4, verifying-changes 2/6, writing-tests 2/4).
+- Eight queries written after the choice: installed alone 7/8 (positives 12/12
+  runs; a request to find why an export writes its byte-order mark twice loaded
+  it in 2 of 3); with the five neighbors, 3 runs each, its positives loaded it in
+  11/12 runs and its negatives in 0/12.
+- Not tested: other agents and models, the full suite installed at once, and a
+  fixture large enough that the agent must search for the existing rule.
+
 ## `verifying-changes` description for someone else's fix (2026-11-24, `pi` 1.6.0 + `deepseek-flash`, confined)
 
 Under the old description the `fix-claim-that-isnt` prompt loaded the skill in 3 of
@@ -112,7 +168,8 @@ checks passed in all runs; mean tokens 57k / 53k / 55k.
   transcript scan found no other run reading outside its directory.
 - Not tested: other agents and models, and any with-skill configuration. The
   workspace (fixtures, checks, check validation, wrappers) is
-  `.workspace/evolving-existing-code/`, not committed.
+  `.workspace/evolving-existing-code/`, not committed. The three discriminating
+  cases became `reusing-existing-code` (section above).
 
 ## New skill `creating-verification-harnesses` (2026-11-17, Claude Haiku 5.5 subagents)
 
