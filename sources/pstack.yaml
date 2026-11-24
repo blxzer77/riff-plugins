@@ -3,11 +3,14 @@
 # source material only: practices are rewritten in this repository's words, checked
 # against a primary source where one exists, and adopted only where an eval can show
 # an effect. pstack ships no evals; "agents get this wrong" is the author's
-# experience until this repository measures it. Read 2026-11-16.
+# experience until this repository measures it. Read 2026-11-16. Testing and
+# verification re-read on 2026-11-24 at `rechecked`: nothing in them changed after
+# 3fa33bb; automations/benny was new to this map.
 upstream:
   repo: https://github.com/cursor/plugins
   path: pstack
   commit: bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7
+  rechecked: 005d8f6ec057b738adcd08a08b30db0478402d
   license: MIT (Copyright (c) 2026 Lauren Tan)
 adopted:
   writing-tests:
@@ -58,6 +61,13 @@ adopted:
       practice: observe what a dry run skips; kill only what you started and keep the evidence; name what a stand-in did that the real target will not (commit 3fa33bb)
     - path: skills/poteto-mode/playbooks/shipping.md
       practice: an author's verdict does not count; a verdict covers one patch; read back after a merge (commit 3fa33bb)
+    - path: automations/benny/skills/reproduce-and-fix-issues/references/verify-existing-fix.md
+      practice: run the same check on the old code and on the fix, with the reporter's input, command and environment; no baseline is inconclusive, a fix that still shows the symptom is insufficient; capture the final state where they differ
+      note: eval fix-claim-that-isnt (2026-11-24); the baseline already reaches the verdict, the rule raises runs on the old code from 1/3 to 3/3 when read, and the skill loads for this task in 3 of 9 runs
+  evaluating-skills:
+    - path: skills/poteto-mode/playbooks/eval.md
+      practice: nothing the candidate sees (path, git history, environment, prompt) names the evaluation; organic prompts; never ask the candidate which skills it used
+      note: checked against Needham et al. 2025 (arXiv 2505.23836); the harness showed a commit "fixture" by "eval" until 8206c5c, and a manual baseline ran inside the eval workspace (docs/EVALUATION_RESULTS.md, 2026-11-24)
   measuring-performance:
     - path: skills/benchmark-checklist/SKILL.md
       practice: write the claim first; check limits, errors, repeatability and that the work happened (checked against Gregg's active benchmarking)
