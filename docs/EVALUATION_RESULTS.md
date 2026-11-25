@@ -19,6 +19,51 @@
 > 2026-11-16 a minimal probe succeeded again; probe before every batch, because the
 > local proxy still drops connections at times.
 
+## The two weakest skills again, and a global prompt (2026-11-25, `pi` 1.6.0, `deepseek-flash` and `grok-4.7-build-fast`, confined)
+
+The section below found `verifying-changes` and `fanning-out-work` weakest in both
+models, one run per query. Rerun with all 19 skills installed and only those two
+skills' validation queries, 3 runs per query (`run_routing.py` from a copy of the
+suite whose evals hold just those two); a cell counts completed runs.
+
+| Skill | deepseek positives | deepseek own negatives | grok positives | grok own negatives |
+|---|---:|---:|---:|---:|
+| fanning-out-work | 3/10 | 0/12 | 5/12 | 0/12 |
+| verifying-changes | 3/18 | 0/17 | 10/18 | 1/18 |
+
+- Both are weak, not unlucky. Four positives never loaded their owner in any run on
+  either model: `verifying-changes`' two queries where someone else says a fix is
+  done (QA reopened a ticket the developer says is fixed; a teammate says
+  `parseDuration` handles `1h30m` now) and `fanning-out-work`'s "compare these two
+  rate limiter implementations head to head and pick one" and "check every link in
+  40 markdown docs". The first three loaded no skill at all; the link check loaded
+  other skills in three runs (`authoring-skills` twice under deepseek).
+- Yesterday's description change targeted the two someone-else's-fix queries.
+  Installed alone it loaded on 4 of 6 validation positives; with the suite
+  installed neither model loads it for them. grok loads it for the user's own
+  changes (a feature flag, an export, green tests: 9/9) and not for someone else's
+  claim (0/6).
+- Three deepseek runs failed (timeouts) and are excluded; grok had none. grok's one
+  own-negative load was "set up a CI pipeline with lint and test jobs".
+
+Global prompt: deepseek again on the full suite's 155 validation queries, one run
+each, with `template/global-prompt.md` appended to the system prompt
+(`--append-system-prompt`). The template never mentions skills, so it was filled in
+the way this machine's prompt is: English; the tool-preference line saying to search
+the web with riff and that the riff-plugins skills are installed and load by their
+triggers; every other placeholder line deleted, as the template says to.
+
+- With the prompt the owner loaded on 38 of 77 positives, without it 44 of 77; own
+  negatives 1/76 in both; a positive went to another skill 10 times (3 without);
+  `searching-the-web` loaded on other skills' queries 14 times (8 without).
+- Paired by query: 30 positives loaded with and without, 14 only without, 8 only
+  with, 25 in neither (sign test p = 0.29). The prompt did not raise loading.
+- The two runs disagree on 22 of 77 positives with nearly the same setup: a routing
+  cell from one run per query is noisy, and three runs per query are the minimum
+  for a decision about one skill.
+- Results: `.workspace/_routing-weak-deepseek/`, `.workspace/_routing-weak-grok/`
+  and `.workspace/_routing-full-deepseek-prompt/` (each `routing/*-validation.json`).
+
 ## All 19 skills installed at once (2026-11-25, `pi` 1.6.0, `deepseek-flash` and `grok-4.7-build-fast`, confined)
 
 `run_routing.py --suite skills --set validation --runs 1`: every skill's validation
