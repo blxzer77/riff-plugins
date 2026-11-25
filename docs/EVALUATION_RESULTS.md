@@ -19,6 +19,69 @@
 > 2026-11-16 a minimal probe succeeded again; probe before every batch, because the
 > local proxy still drops connections at times.
 
+## All 19 skills installed at once (2026-11-25, `pi` 1.6.0, `deepseek-flash` and `grok-4.7-build-fast`, confined)
+
+`run_routing.py --suite skills --set validation --runs 1`: every skill's validation
+queries (155) with all 19 skills installed, one run per query, once per model, 3
+jobs, a 300 s timeout, 2 retries, and the `unshare` wrapper. "Positives" counts
+runs on a skill's own positive queries that loaded it, "own negatives" runs on its
+own negative queries that loaded it.
+
+| Skill | deepseek positives | deepseek own negatives | grok positives | grok own negatives |
+|---|---:|---:|---:|---:|
+| authoring-skills | 3/4 | 0/4 | 4/4 | 1/4 |
+| building-llm-applications | 3/4 | 0/4 | 4/4 | 1/4 |
+| checking-invariants | 2/4 | 0/4 | 4/4 | 0/4 |
+| creating-verification-harnesses | 3/4 | 0/3 | 4/4 | 0/4 |
+| debugging-failures | 1/4 | 0/4 | 4/4 | 0/4 |
+| designing-apis | 1/3 | 0/4 | 3/3 | 0/4 |
+| designing-modules | 3/4 | 0/4 | 4/4 | 1/4 |
+| evaluating-skills | 3/4 | 1/4 | 4/4 | 1/4 |
+| fanning-out-work | 0/4 | 0/4 | 2/4 | 0/4 |
+| measuring-performance | 0/4 | 0/4 | 4/4 | 0/4 |
+| reusing-existing-code | 2/4 | 0/4 | 4/4 | 0/4 |
+| reviewing-code | 4/4 | 0/4 | 4/4 | 1/4 |
+| reviewing-designs | 4/4 | 0/4 | 4/4 | 0/4 |
+| searching-the-web | 4/4 | 0/4 | 4/4 | 0/4 |
+| selecting-technologies | 4/4 | 0/4 | 4/4 | 0/4 |
+| verifying-changes | 1/6 | 0/5 | 3/6 | 0/6 |
+| writing-adrs | 3/4 | 0/4 | 4/4 | 1/4 |
+| writing-tests | 1/4 | 0/4 | 3/4 | 0/4 |
+| writing-typescript | 2/4 | 0/4 | 4/4 | 0/4 |
+| **Total** | **44/77** | **1/76** | **71/77** | **6/78** |
+
+- The two models fail in opposite directions. deepseek's misses are runs that
+  loaded no skill at all (30 of its 33); another skill took a positive only 3
+  times. grok loaded the owner in 71 of 77, but also loaded other skills 76 times
+  on positives (deepseek 20), and loaded skills on other skills' queries freely:
+  `searching-the-web` 34 times, `writing-tests` 32, `writing-adrs` 23,
+  `selecting-technologies` 22, `reusing-existing-code` 16. Steals stayed rare: 3
+  for deepseek, 2 for grok.
+- With more skills installed, deepseek loaded skills less often. On the six skills of
+  the 2026-11-24 suite run, the same queries loaded the owner in 18 of 26 runs with
+  six skills installed and in 12 of 26 with all 19 (one run per query in both).
+- Weak for both models: `verifying-changes` (1/6, 3/6) and `fanning-out-work` (0/4,
+  2/4), mostly by loading nothing; one miss each went to another skill
+  (`debugging-failures` under grok, `writing-tests` under deepseek).
+- Own-negative loads: "install the evaluating-skills skill globally" loaded
+  `evaluating-skills` in both models; under grok also `authoring-skills` on
+  installing the repository's skills, `designing-modules` (with `designing-apis`)
+  on a REST API design, `reviewing-code` on a whole-repository security audit,
+  `writing-adrs` on a minor React bump, and `building-llm-applications` on a CI job
+  missing pandas.
+- `reusing-existing-code`: deepseek 2/4 (the webhook notice and the student
+  discount loaded nothing), grok 4/4; neither loaded it on its own negatives. grok
+  also loaded it on 16 other skills' queries, mostly requests to add an endpoint,
+  event type, retry or pagination to existing code, a few test-writing and refactor
+  requests, and once instead of `writing-tests` (a retry-with-backoff wrapper).
+- Two deepseek runs ended in proxy connection drops and are excluded; grok had none.
+  Reads of skills that are not in the suite (fixture skills such as `verify-app`,
+  and shell-variable paths such as `$d/SKILL.md`) are not counted.
+- One run per query: a single cell moves with one run, so per-skill differences of
+  one are noise. Results:
+  `.workspace/_routing-full-deepseek/routing/20261125T115224392864Z-validation.json`
+  and `.workspace/_routing-full-grok/routing/20261125T121215864386Z-validation.json`.
+
 ## `reusing-existing-code` in a project large enough to search (2026-11-25, `pi` 1.6.0 + `deepseek-flash`, confined)
 
 The cases in the next section have at most nine files, so every run reads the code
