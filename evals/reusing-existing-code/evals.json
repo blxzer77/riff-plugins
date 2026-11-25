@@ -36,6 +36,18 @@
         {"id": "duplicate-check-once", "text": "The duplicate-ID check is written once and shared by both importers", "script": "checks/import_duplicate_check_once.py"},
         {"id": "no-new-shared-module", "text": "No new shared grab-bag module (utils, common, core, ...) was added", "script": "checks/no_new_shared_module.py"}
       ]
+    },
+    {
+      "id": 4,
+      "name": "ticket-order-link",
+      "prompt": "Support wants every ticket linked to the order it's about. Most customers don't pick the order in the contact form; they just mention it somewhere in the subject or message ('my order a1001 arrived broken', 'Bestellung #A 1001 – Lampe defekt'). When `open_ticket` in `app/support/tickets.py` gets no `order_id`, find the order number in the subject or message and set the ticket's `order_id` to that order, but only if it belongs to the same customer; otherwise leave it None. Add tests and keep the suite green.",
+      "expected_output": "Finds that the project already reads order numbers out of free text (reference_in in app/payments/transfers.py, written for bank transfers and named for their references) and links tickets through it, moving it to the order-number module if it likes, instead of writing a second order-number regex in app/support/tickets.py. Tickets then accept every spelling bank transfers accept ('A.1001', 'A–1001', 'A - 1001', 'A/1001' as well as the prompt's examples) and none they reject ('CA-1001', 'A-12'); other customers' orders and an explicit order_id are respected; bank transfers match as before; no new utils or common module; all tests pass.",
+      "files": ["files/ticket-order-link"],
+      "assertions": [
+        {"id": "ticket-link-correct", "text": "open_ticket links the customer's own order for every spelling bank transfers accept, and nothing else; transfers match as before", "script": "checks/ticket_link_behavior.py"},
+        {"id": "one-order-number-reader", "text": "Tickets and bank transfers read order numbers with the same function", "script": "checks/ticket_link_once.py"},
+        {"id": "no-new-shared-module", "text": "No new shared grab-bag module (utils, common, core, ...) was added", "script": "checks/no_new_shared_module.py"}
+      ]
     }
   ]
 }

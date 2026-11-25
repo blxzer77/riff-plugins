@@ -1,6 +1,6 @@
 """Validates the reusing-existing-code eval checks: untouched fixtures fail, two correct
-solutions written differently pass, copy-paste near-misses fail, and shared code moved
-into a new grab-bag module fails the shared-module check."""
+solutions written differently pass, copy-paste near-misses and rewrites of an existing
+rule fail, and shared code moved into a new grab-bag module fails the shared-module check."""
 
 from __future__ import annotations
 
@@ -15,8 +15,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 EVALS = REPO / "evals" / "reusing-existing-code"
 
-UNTOUCHED, GOOD, ALT, MISS, MISS2, GRAB_BAG = (
-    "untouched", "good", "alternative", "near-miss", "near-miss-2", "grab-bag")
+UNTOUCHED, GOOD, ALT, ALT2, MISS, MISS2, MISS3, GRAB_BAG = (
+    "untouched", "good", "alternative", "alternative-2", "near-miss", "near-miss-2", "near-miss-3",
+    "grab-bag")
 
 # Files that replace or add to the fixture, per variant.
 
@@ -526,6 +527,120 @@ SHARE[GRAB_BAG] = {"app/common.py": ORDER_RULES,
                    "app/cli_import.py": CLI_GOOD.replace("app.order_rules", "app.common"),
                    "app/api_orders.py": API_GOOD.replace("app.order_rules", "app.common")}
 
+
+# ticket-order-link: variants are edits of the fixture's own files.
+def _fixture_text(rel: str) -> str:
+    return (EVALS / "files" / "ticket-order-link" / rel).read_text(encoding="utf-8")
+
+
+def _swap(text: str, old: str, new: str) -> str:
+    assert old in text, f"fixture changed: {old!r} not found"
+    return text.replace(old, new, 1)
+
+
+TICKETS, TRANSFERS, NUMBERS = (_fixture_text(rel) for rel in (
+    "app/support/tickets.py", "app/payments/transfers.py", "app/orders/numbers.py"))
+
+
+def tickets_with(imports: str, find_order: str, helpers: str = "") -> str:
+    """tickets.py whose open_ticket links the order id that `find_order` (a body) returns."""
+    text = _swap(TICKETS, "from app import db\n", imports + "from app import db\n")
+    text = _swap(text, '        raise ValueError("subject and message are required")\n',
+                 '        raise ValueError("subject and message are required")\n'
+                 '    if order_id is None:\n'
+                 '        order_id = _mentioned_order(customer_id, subject, body)\n')
+    return (text + helpers + "\n\ndef _mentioned_order(customer_id: int, subject: str, body: str)"
+            " -> int | None:\n" + find_order)
+
+
+OWN_ORDER = """    reference = {reader}(f"{{subject}}\\n{{body}}")
+    for order in db.ORDERS.values():
+        if order["number"] == reference and order["customer_id"] == customer_id:
+            return order["id"]
+    return None
+"""
+SPLIT_LOOKUP = """    number = find_order_number(subject) or find_order_number(body)
+    order = next((o for o in db.ORDERS.values() if o["number"] == number), None)
+    return order["id"] if order is not None and order["customer_id"] == customer_id else None
+"""
+FIND_ORDER_NUMBER = """
+_IN_TEXT = re.compile(r"(?<![A-Z0-9])A\\s*[-–—./]?\\s*(\\d{4,7})(?!\\d)")
+
+
+def find_order_number(text: str) -> str | None:
+    \"\"\"The first order number in free text, however the customer wrote it.\"\"\"
+    match = _IN_TEXT.search(text.upper())
+    return f"{PREFIX}{match.group(1)}" if match else None
+"""
+EVERY_ORDER_NUMBER = """
+_IN_TEXT = re.compile(r"(?<![A-Z0-9])A\\s*[-–—./]?\\s*(\\d{4,7})(?!\\d)")
+
+
+def order_numbers_in(text: str) -> list[str]:
+    return [f"{PREFIX}{m.group(1)}" for m in _IN_TEXT.finditer(text.upper())]
+
+
+def first_order_number(text: str) -> str | None:
+    numbers = order_numbers_in(text)
+    return numbers[0] if numbers else None
+"""
+EVERY_LOOKUP = """    for text in (subject, body):
+        for number in order_numbers_in(text):
+            order = next((o for o in db.ORDERS.values() if o["number"] == number), None)
+            if order is not None and order["customer_id"] == customer_id:
+                return order["id"]
+    return None
+"""
+# transfers.py importing the reader from elsewhere instead of defining it.
+_head, _rest = TRANSFERS.split("from app.orders.numbers import PREFIX\n", 1)
+_tail = _rest.split("\n\ndef match_transfer", 1)[1]
+TRANSFERS_ON = _head + "from MODULE import find_order_number as reference_in\n\n\ndef match_transfer" + _tail
+
+# A rewrite from the prompt's examples: it misses the dot, slash and dash spellings.
+REWRITE = r"""
+
+_ORDER = re.compile(r"\bA-?\s*(\d{4,})\b", re.IGNORECASE)
+
+
+def _order_number(text: str) -> str | None:
+    match = _ORDER.search(text)
+    return f"A-{match.group(1)}" if match else None
+"""
+# The existing reader copied verbatim: it behaves the same and is a second copy.
+COPY = "\n\n" + TRANSFERS[TRANSFERS.index("_LETTERS = "):TRANSFERS.index("\n\ndef match_transfer")].replace(
+    "def reference_in(", "def _reference_in(")
+
+TICKET = {
+    GOOD: {"app/support/tickets.py": tickets_with("from app.payments.transfers import reference_in\n",
+                                                  OWN_ORDER.format(reader="reference_in"))},
+    # The reader moved to the module that owns order numbers and renamed; transfers.py imports it.
+    ALT: {"app/orders/numbers.py": _swap(NUMBERS, "from app import db\n", "import re\n\nfrom app import db\n")
+          + FIND_ORDER_NUMBER,
+          "app/payments/transfers.py": TRANSFERS_ON.replace("MODULE", "app.orders.numbers"),
+          "app/support/tickets.py": tickets_with("from app.orders.numbers import find_order_number\n",
+                                                 SPLIT_LOOKUP)},
+    # The reader moved next to the number format and returns every match; a wrapper keeps
+    # the first for transfers.
+    ALT2: {"app/orders/numbers.py": _swap(NUMBERS, "from app import db\n", "import re\n\nfrom app import db\n")
+           + EVERY_ORDER_NUMBER,
+           "app/payments/transfers.py": TRANSFERS_ON.replace("MODULE", "app.orders.numbers").replace(
+               "find_order_number as reference_in", "first_order_number as reference_in"),
+           "app/support/tickets.py": tickets_with("from app.orders.numbers import order_numbers_in\n",
+                                                  EVERY_LOOKUP)},
+    MISS: {"app/support/tickets.py": tickets_with("import re\n\n", OWN_ORDER.format(reader="_order_number"),
+                                                  REWRITE)},
+    MISS2: {"app/support/tickets.py": tickets_with("import re\n\nfrom app.orders.numbers import PREFIX\n",
+                                                   OWN_ORDER.format(reader="_reference_in"), COPY)},
+    # Reads the number with the existing code, but links other customers' orders too.
+    MISS3: {"app/support/tickets.py": tickets_with(
+        "from app.payments.transfers import reference_in\n",
+        OWN_ORDER.format(reader="reference_in").replace(' and order["customer_id"] == customer_id', ""))},
+    GRAB_BAG: {"app/utils.py": "import re\n\nfrom app.orders.numbers import PREFIX\n" + FIND_ORDER_NUMBER,
+               "app/payments/transfers.py": TRANSFERS_ON.replace("MODULE", "app.utils"),
+               "app/support/tickets.py": tickets_with("from app.utils import find_order_number\n",
+                                                      SPLIT_LOOKUP)},
+}
+
 P, F = True, False
 # fixture: (checks, variants, appends, {variant: verdict per check})
 CASES = {
@@ -541,6 +656,10 @@ CASES = {
          "no_new_shared_module"], SHARE, {},
         {UNTOUCHED: [F, F, F, P], GOOD: [P, P, P, P], ALT: [P, P, P, P], MISS: [P, F, F, P],
          MISS2: [P, P, F, P], GRAB_BAG: [P, P, P, F]}),
+    "ticket-order-link": (
+        ["ticket_link_behavior", "ticket_link_once", "no_new_shared_module"], TICKET, {},
+        {UNTOUCHED: [F, F, P], GOOD: [P, P, P], ALT: [P, P, P], ALT2: [P, P, P], MISS: [F, F, P],
+         MISS2: [P, F, P], MISS3: [F, P, P], GRAB_BAG: [P, P, F]}),
 }
 
 
@@ -561,6 +680,7 @@ class ReuseChecks(unittest.TestCase):
                     shutil.copytree(fixture, work, ignore=shutil.ignore_patterns("__pycache__"))
                     for rel, text in variants.get(name, {}).items():
                         if text is not None:  # None keeps the fixture's file
+                            (work / rel).parent.mkdir(parents=True, exist_ok=True)
                             (work / rel).write_text(text, encoding="utf-8")
                     if name in appends:
                         rel, text = appends[name]

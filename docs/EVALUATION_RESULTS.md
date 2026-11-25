@@ -19,6 +19,52 @@
 > 2026-11-16 a minimal probe succeeded again; probe before every batch, because the
 > local proxy still drops connections at times.
 
+## `reusing-existing-code` in a project large enough to search (2026-11-25, `pi` 1.6.0 + `deepseek-flash`, confined)
+
+The cases in the next section have at most nine files, so every run reads the code
+it needs, and the skill's first rule, search for the rule by what it does, went
+unmeasured. Two cases on one 73-file shop backend (52 modules under `app/`, 57 tests)
+tried to measure it, with the `unshare` wrapper as before; a cell counts runs that
+passed the assertion.
+
+| Case | Configuration | Behavior | One implementation | No grab-bag module | Mean tokens |
+|---|---|---:|---:|---:|---:|
+| courier-phone (not kept) | no skill | 3/3 | 3/3 | 3/3 | 93k |
+| courier-phone (not kept) | skill installed (loaded in 2 of 3) | 2/2 | 2/2 | 2/2 | 148k |
+| ticket-order-link | no skill | 6/6 | 5/6 | 6/6 | 131k |
+| ticket-order-link | skill installed (loaded in 6 of 6) | 6/6 | 6/6 | 6/6 | 160k |
+
+- courier-phone asked for a delivery phone on addresses and the courier label. The
+  existing rule, `to_msisdn` in `app/notifications/sms.py`, is named for the SMS
+  gateway but documented as normalizing a phone number. Every baseline run grepped
+  `phone|mobile|sms` before writing code and reused it, so the case measured nothing
+  the agent does not do already; ticket-order-link replaced it on the same fixture.
+- ticket-order-link asks to link support tickets to the order a customer mentions.
+  Reading order numbers out of free text already exists as `reference_in` in
+  `app/payments/transfers.py`, written for bank transfers and named for their
+  references: a search for "order number" or `order_number` misses it; a search for
+  the `PREFIX` constant, the project's regular expressions, `ORDERS` or a loose
+  `order.*number` finds it. The
+  one-implementation check traces which function returns the order number on the
+  ticket path and on the bank-transfer path; the two must share one.
+- The baseline searched that way on its own. Five of six runs grepped for `PREFIX`,
+  `re.`, `A-`, `ORDERS` or `number` before the first edit and reused `reference_in`;
+  the sixth grepped `order_id`, `order_number`, `normalize` and the prompt's
+  spellings, missed the module, and wrote its own regular expression. That pattern is
+  looser and linked every tested spelling, so only the one-implementation check
+  caught it. What the search rule adds is not shown on this model.
+- Where the shared reader ended up differed. All six runs with the skill moved it into
+  `app/orders/numbers.py`, next to the number format, and pointed bank transfers at
+  it; of the five baseline runs that reused it, two did, and three imported it from
+  `app/payments/transfers.py`. The skill allows both, so this is not an assertion.
+- The first grading failed a baseline run whose moved reader returns every match as a
+  list. The check now accepts the number in a collection or a match object, every run
+  of that batch was re-graded, and `tests/test_reusing_existing_code_checks.py`
+  covers that shape.
+- With the skill, runs used 22% more tokens (160k against 131k) and 24% less time
+  (90 s against 118 s).
+- Not tested: other agents and models, which may not search on their own.
+
 ## New skill `reusing-existing-code` (2026-11-24, `pi` 1.6.0 + `deepseek-flash`, confined)
 
 The blinded re-run below left a failure with no skill to fix it: asked to add a case
@@ -72,8 +118,9 @@ Triggering, installed alone, 3 runs per query, threshold 0.5:
   runs; a request to find why an export writes its byte-order mark twice loaded
   it in 2 of 3); with the five neighbors, 3 runs each, its positives loaded it in
   11/12 runs and its negatives in 0/12.
-- Not tested: other agents and models, the full suite installed at once, and a
-  fixture large enough that the agent must search for the existing rule.
+- Not tested: other agents and models, and the full suite installed at once. A
+  fixture large enough that the agent must search for the existing rule is in the
+  section above.
 
 ## `verifying-changes` description for someone else's fix (2026-11-24, `pi` 1.6.0 + `deepseek-flash`, confined)
 
